@@ -3,8 +3,6 @@ from typing import Iterable
 
 import click
 
-from ..io_utils import get_data_path
-
 
 def read_data(filename: Path) -> Iterable[list[int]]:
     with open(filename, "r", encoding="utf-8") as f:
@@ -16,6 +14,7 @@ def read_data(filename: Path) -> Iterable[list[int]]:
                 buf = []
             else:
                 buf.append(int(line))
+    yield buf
 
 
 @click.command()
