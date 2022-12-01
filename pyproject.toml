@@ -1,0 +1,25 @@
+[tool.poetry]
+name = "advent-of-code-2022"
+version = "0.1.0"
+description = ""
+authors = ["Tomasz Maćkowiak <kurazu@kurazu.net>"]
+license = "MIT"
+readme = "README.md"
+packages = [{include = "advent_of_code_2022"}]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+numpy = "^1.23.5"
+more-itertools = "^9.0.0"
+tqdm = "^4.64.1"
+
+[tool.poetry.group.dev.dependencies]
+mypy = "^0.991"
+black = "^22.10.0"
+isort = "^5.10.1"
+flake8 = "^6.0.0"
+ipdb = "^0.13.9"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
