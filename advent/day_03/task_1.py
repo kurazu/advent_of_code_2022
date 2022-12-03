@@ -1,17 +1,9 @@
 from pathlib import Path
-from typing import Iterable
 
 import click
 
 from ..cli_utils import wrap_main
-
-
-def get_stripped_lines(filename: Path) -> Iterable[str]:
-    with filename.open() as f:
-        for line in f:
-            line = line.strip()
-            if line:
-                yield line
+from ..io_utils import get_stripped_lines
 
 
 def get_common_item(all_items: str) -> str:
