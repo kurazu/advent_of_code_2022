@@ -1,3 +1,4 @@
+import functools
 from pathlib import Path
 from typing import Callable
 
@@ -5,7 +6,11 @@ import click
 
 
 def wrap_main(main: Callable[[Path], str]) -> Callable[[], None]:
-    wrapped_main = click.command()(
+    @functools.wraps(main)
+    def main_wrapper(filename: Path) -> None:
+        click.echo(main(filename))
+
+    return click.command()(
         click.argument(
             "filename",
             type=click.Path(
@@ -15,6 +20,5 @@ def wrap_main(main: Callable[[Path], str]) -> Callable[[], None]:
                 readable=True,
                 path_type=Path,
             ),
-        )(main)
+        )(main_wrapper)
     )
-    return wrapped_main

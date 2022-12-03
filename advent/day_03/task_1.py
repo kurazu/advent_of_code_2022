@@ -32,12 +32,12 @@ def get_priority(item: str) -> int:
 
 
 @wrap_main
-def main(filename: Path) -> None:
+def main(filename: Path) -> str:
     lines = get_stripped_lines(filename)
     common_items = map(get_common_item, lines)
     priorities = map(get_priority, common_items)
     total_priority = sum(priorities)
-    click.echo(total_priority)
+    return str(total_priority)
 
 
 if __name__ == "__main__":
