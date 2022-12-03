@@ -3,6 +3,8 @@ from typing import Iterable
 
 import click
 
+from ..cli_utils import wrap_main
+
 
 def get_stripped_lines(filename: Path) -> Iterable[str]:
     with filename.open() as f:
@@ -37,13 +39,7 @@ def get_priority(item: str) -> int:
         raise ValueError(item)
 
 
-@click.command()
-@click.argument(
-    "filename",
-    type=click.Path(
-        exists=True, file_okay=True, dir_okay=False, readable=True, path_type=Path
-    ),
-)
+@wrap_main
 def main(filename: Path) -> None:
     lines = get_stripped_lines(filename)
     common_items = map(get_common_item, lines)
