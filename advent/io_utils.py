@@ -10,6 +10,4 @@ def get_data_path(day: int, filename: str) -> Path:
 def get_stripped_lines(filename: Path) -> Iterable[str]:
     with filename.open() as f:
         for line in f:
-            line = line.strip()
-            if line:
-                yield line
+            yield line.rstrip("\n")
