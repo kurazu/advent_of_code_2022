@@ -32,7 +32,7 @@ def parse_stacks(input_lines: Iterator[str]) -> list[list[str]]:
 
 
 class Instruction(NamedTuple):
-    count: int
+    count_: int
     from_: int
     to: int
 
@@ -44,7 +44,7 @@ def parse_instructions(input_lines: Iterator[str]) -> Iterator[Instruction]:
         count = int(match.group("count"))
         from_ = int(match.group("from")) - 1
         to = int(match.group("to")) - 1
-        yield Instruction(count=count, from_=from_, to=to)
+        yield Instruction(count_=count, from_=from_, to=to)
 
 
 @wrap_main
@@ -54,7 +54,7 @@ def main(filename: Path) -> str:
     for instruction in parse_instructions(input_lines):
         source_stack = stacks[instruction.from_]
         target_stack = stacks[instruction.to]
-        for _ in range(instruction.count):
+        for _ in range(instruction.count_):
             target_stack.append(source_stack.pop())
 
     return "".join(map(operator.itemgetter(-1), stacks))
