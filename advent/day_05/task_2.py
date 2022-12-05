@@ -1,7 +1,5 @@
 import operator
-import re
 from pathlib import Path
-from typing import Iterator, NamedTuple
 
 from ..cli_utils import wrap_main
 from ..io_utils import get_stripped_lines
