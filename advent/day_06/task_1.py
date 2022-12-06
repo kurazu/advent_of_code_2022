@@ -8,7 +8,10 @@ from ..cli_utils import wrap_main
 
 
 def find_position(text: str) -> int:
-    return 0
+    for idx, window in enumerate(mit.sliding_window(text, 4)):
+        if len(set(window)) == 4:
+            return idx + 4
+    raise AssertionError("Marker not found")
 
 
 @wrap_main
@@ -16,7 +19,7 @@ def main(filename: Path) -> str:
     with filename.open() as f:
         text = f.read().strip()
     position = find_position(text)
-    click.echo(position)
+    return str(position)
 
 
 TEST_CASES: list[tuple[str, int]] = [
@@ -31,6 +34,11 @@ TEST_CASES: list[tuple[str, int]] = [
 @pytest.mark.parametrize("text, expected", TEST_CASES)
 def test_find_position(text: str, expected: int) -> None:
     assert find_position(text) == expected
+
+
+def test_find_position_no_marker() -> None:
+    with pytest.raises(AssertionError, match="Marker not found"):
+        find_position("abcabcabcabc")
 
 
 if __name__ == "__main__":
