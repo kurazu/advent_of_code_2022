@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable, Iterator
+from typing import Iterator
 
 from ..cli_utils import wrap_main
 from ..io_utils import get_stripped_lines
@@ -53,6 +53,7 @@ def find_dirs(root: Dir) -> Iterator[Dir]:
     yield root
     for subdir in root.subdirs.values():
         yield from find_dirs(subdir)
+
 
 @wrap_main
 def main(filename: Path) -> str:
