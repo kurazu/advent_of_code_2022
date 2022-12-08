@@ -34,9 +34,9 @@ def map_matrix(
         for col_idx in range(width):
             current_height = matrix[row_idx, col_idx]
             # check if any tree to the north is shorter
-            north = matrix[:row_idx, col_idx]
+            north = matrix[:row_idx, col_idx][::-1]
             south = matrix[row_idx + 1 :, col_idx]
-            west = matrix[row_idx, :col_idx]
+            west = matrix[row_idx, :col_idx][::-1]
             east = matrix[row_idx, col_idx + 1 :]
 
             value = callback([north, south, west, east], current_height)
