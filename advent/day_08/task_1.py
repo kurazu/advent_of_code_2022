@@ -3,25 +3,30 @@ from pathlib import Path
 from typing import Callable, Iterable, TypeVar
 
 import numpy as np
+from numpy import typing as npt
 
 from ..cli_utils import wrap_main
 from ..io_utils import get_stripped_lines
 
 
-@wrap_main
-def main(filename: Path) -> str:
-    matrix = np.array(
+def parse_matrix(filename: Path) -> npt.NDArray[np.uint8]:
+    return np.array(
         list(
             map(
-                list,
+                lambda items: list(items),
                 map(partial(map, int), map(list, get_stripped_lines(filename))),
             )
         ),
         dtype=np.uint8,
     )
+
+
+def map_matrix(
+    matrix: npt.NDArray[np.uint8],
+    callback: Callable[[list[npt.NDArray[np.uint8]], int], int],
+) -> npt.NDArray[np.uint64]:
     height, width = matrix.shape
-    visible_trees = 0
-    visible = np.zeros_like(matrix, dtype=bool)
+    result = np.zeros_like(matrix, dtype=np.uint64)
     for row_idx in range(height):
         for col_idx in range(width):
             current_height = matrix[row_idx, col_idx]
@@ -31,15 +36,21 @@ def main(filename: Path) -> str:
             west = matrix[row_idx, :col_idx]
             east = matrix[row_idx, col_idx + 1 :]
 
-            is_visible = (
-                (north < current_height).all()
-                or (south < current_height).all()
-                or (west < current_height).all()
-                or (east < current_height).all()
-            )
-            visible_trees += is_visible
+            value = callback([north, south, west, east], current_height)
+            result[row_idx, col_idx] = value
+    return result
 
-    return str(visible_trees)
+
+@wrap_main
+def main(filename: Path) -> str:
+    matrix = parse_matrix(filename)
+    visible = map_matrix(
+        matrix,
+        lambda directions, current_height: any(
+            (direction < current_height).all() for direction in directions
+        ),
+    )
+    return str(visible.sum())
 
 
 if __name__ == "__main__":
