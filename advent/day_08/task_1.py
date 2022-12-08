@@ -1,6 +1,6 @@
 from functools import partial
 from pathlib import Path
-from typing import Callable, Iterable, TypeVar
+from typing import Callable
 
 import numpy as np
 from numpy import typing as npt
@@ -14,7 +14,10 @@ def parse_matrix(filename: Path) -> npt.NDArray[np.uint8]:
         list(
             map(
                 lambda items: list(items),
-                map(partial(map, int), map(list, get_stripped_lines(filename))),
+                map(
+                    partial(map, int),
+                    map(lambda items: list(items), get_stripped_lines(filename)),
+                ),
             )
         ),
         dtype=np.uint8,
