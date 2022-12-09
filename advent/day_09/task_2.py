@@ -1,9 +1,6 @@
-import itertools as it
 import logging
 from pathlib import Path
 from typing import Iterable
-
-import more_itertools as mit
 
 from .. import __name__ as package_name
 from ..cli_utils import wrap_main
