@@ -65,20 +65,20 @@ def tail_catchup(tail_location: Position, head_location: Position) -> Position:
     else:
         logger.debug("Tail moving diagonally")
         new_tail_location = Position(tail_location.x + x_step, tail_location.y + y_step)
-    logger.debug("New tail location: %s", new_tail_location)
     return new_tail_location
 
 
 def execute_instructions(instructions: Iterable[Instruction]) -> set[Position]:
-    tail_visited_locations: set[Position] = set()
     head_location = Position(0, 0)
     tail_location = Position(0, 0)
-    visualize_visited_locations(
-        tail_visited_locations, head=head_location, tail=tail_location
-    )
+    tail_visited_locations = {tail_location}
+    # visualize_visited_locations(
+    #     tail_visited_locations, head=head_location, tail=tail_location
+    # )
     for instruction in instructions:
         logger.debug("Processing instruction %s", instruction)
-        for _ in range(instruction.distance):
+        for step in range(instruction.distance):
+            logger.debug("Step %d of instruction %s", step + 1, instruction)
             if instruction.direction == Direction.UP:
                 head_location = Position(head_location.x, head_location.y - 1)
             elif instruction.direction == Direction.DOWN:
@@ -89,10 +89,12 @@ def execute_instructions(instructions: Iterable[Instruction]) -> set[Position]:
                 assert instruction.direction == Direction.RIGHT
                 head_location = Position(head_location.x + 1, head_location.y)
             tail_location = tail_catchup(tail_location, head_location)
+            logger.debug("New tail location: %s", tail_location)
             tail_visited_locations.add(tail_location)
-            visualize_visited_locations(
-                tail_visited_locations, head=head_location, tail=tail_location
-            )
+            # visualize_visited_locations(
+            #     tail_visited_locations, head=head_location, tail=tail_location
+            # )
+        logger.debug("Finished instruction %s", instruction)
     return tail_visited_locations
 
 
@@ -104,7 +106,7 @@ def visualize_visited_locations(
 ) -> None:
     import numpy as np
 
-    all_locations = visited_locations
+    all_locations = set(visited_locations)
     if head is not None:
         all_locations.add(head)
     if tail is not None:
@@ -126,17 +128,26 @@ def visualize_visited_locations(
         board[tail.y - min_y, tail.x - min_x] = "T"
     if head is not None and tail is not None and head == tail:
         board[head.y - min_y, head.x - min_x] = "X"
-    logger.debug("\n".join("".join(row) for row in board))
+    logger.debug(
+        "visited %d\n%s",
+        len(visited_locations),
+        "\n".join("".join(row) for row in board),
+    )
 
 
 @wrap_main
 def main(filename: Path) -> str:
     instructions = parse_instructions(filename)
     visited_locations = execute_instructions(instructions)
-    visualize_visited_locations(visited_locations)
+    logger.info("Finished")
+    # visualize_visited_locations(visited_locations)
     return str(len(visited_locations))
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.DEBUG, format="%(message)s")
+    logging.basicConfig(
+        level=logging.WARNING,
+        format="[%(asctime)s][%(levelname)8s][%(name)s] %(message)s",
+    )
+    logger.setLevel(logging.DEBUG)
     main()
