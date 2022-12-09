@@ -68,6 +68,18 @@ def tail_catchup(tail_location: Position, head_location: Position) -> Position:
     return new_tail_location
 
 
+def apply_instruction(head: Position, direction: Direction) -> Position:
+    if direction == Direction.UP:
+        return Position(head.x, head.y - 1)
+    elif direction == Direction.DOWN:
+        return Position(head.x, head.y + 1)
+    elif direction == Direction.LEFT:
+        return Position(head.x - 1, head.y)
+    else:
+        assert direction == Direction.RIGHT
+        return Position(head.x + 1, head.y)
+
+
 def execute_instructions(instructions: Iterable[Instruction]) -> set[Position]:
     head_location = Position(0, 0)
     tail_location = Position(0, 0)
@@ -79,15 +91,7 @@ def execute_instructions(instructions: Iterable[Instruction]) -> set[Position]:
         logger.debug("Processing instruction %s", instruction)
         for step in range(instruction.distance):
             logger.debug("Step %d of instruction %s", step + 1, instruction)
-            if instruction.direction == Direction.UP:
-                head_location = Position(head_location.x, head_location.y - 1)
-            elif instruction.direction == Direction.DOWN:
-                head_location = Position(head_location.x, head_location.y + 1)
-            elif instruction.direction == Direction.LEFT:
-                head_location = Position(head_location.x - 1, head_location.y)
-            else:
-                assert instruction.direction == Direction.RIGHT
-                head_location = Position(head_location.x + 1, head_location.y)
+            head_location = apply_instruction(head_location, instruction.direction)
             tail_location = tail_catchup(tail_location, head_location)
             logger.debug("New tail location: %s", tail_location)
             tail_visited_locations.add(tail_location)
