@@ -10,6 +10,6 @@ def setup_logging() -> None:
     )
     for logger_name, level in {
         package_name: logging.DEBUG,
-        __name__: logging.DEBUG,
+        "__main__": logging.DEBUG,
     }.items():
         logging.getLogger(logger_name).setLevel(level)
