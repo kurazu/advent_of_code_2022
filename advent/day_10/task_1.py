@@ -81,17 +81,19 @@ class Interpreter:
                 "Stepped with state %s @ %s", self.state, self.current_instruction
             )
 
-    def run(self, cycles: int) -> Iterable[tuple[int, int]]:
-        for cycle in range(1, cycles + 1):
+    def run(self, cycles: int) -> Iterable[int]:
+        for _ in range(cycles):
             self.step()
-            yield cycle, self.state.x
+            yield self.state.x
 
 
 @wrap_main
 def main(filename: Path) -> str:
     program = load_program(filename)
     interpreter = Interpreter(program)
-    cycle_state = interpreter.run(220)
+    states = interpreter.run(220)
+    cycles = it.count(1)
+    cycle_state = zip(states, cycles)
     interesting: Iterable[tuple[int, int]] = it.islice(cycle_state, 19, None, 40)
     interesting = list(interesting)
     logger.info("Interesting states: %s", interesting)
