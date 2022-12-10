@@ -1,9 +1,9 @@
 import itertools as it
 import logging
 import operator
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Protocol
+from typing import Iterable, Iterator, Protocol
 
 from ..cli_utils import wrap_main
 from ..io_utils import get_stripped_lines
@@ -53,7 +53,7 @@ def load_program(filename: Path) -> list[Instruction]:
 
 class Interpreter:
     current_instruction: Instruction
-    current_op: Iterable[None]
+    current_op: Iterator[None]
 
     def __init__(self, program: list[Instruction]) -> None:
         self.state = InterpreterState()
@@ -63,10 +63,10 @@ class Interpreter:
 
     def shift_instruction(self) -> None:
         self.current_instruction = next(self.instructions)
-        self.current_op = self.current_instruction(self.state)
+        self.current_op = iter(self.current_instruction(self.state))
         logger.info("Shifted to instruction %s", self.current_instruction)
 
-    def step(self) -> int:
+    def step(self) -> None:
         logger.debug(
             "Stepping with state %s @ %s", self.state, self.current_instruction
         )
