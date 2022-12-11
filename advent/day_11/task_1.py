@@ -1,6 +1,9 @@
+import heapq
 import logging
+import operator
 import re
 from dataclasses import dataclass, field
+from functools import reduce
 from pathlib import Path
 from typing import NewType, Protocol
 
@@ -136,11 +139,32 @@ def parse_monkeys(filename: Path) -> dict[MonkeyId, Monkey]:
     return monkeys
 
 
+def play_round(monkeys: dict[MonkeyId, Monkey]) -> None:
+    for monkey_id, monkey in monkeys.items():
+        logger.info("Monkey %d", monkey_id)
+        while monkey.items:
+            item = monkey.items.pop()
+            monkey.inspected_items += 1
+            new = monkey.operation(item)
+            new = WorryLevel(new // 3)
+            if new % monkey.test_divisible_by == 0:
+                target_monkey = monkey.target_monkey_true
+            else:
+                target_monkey = monkey.target_monkey_false
+            monkeys[target_monkey].items.append(new)
+
+
 @wrap_main
 def main(filename: Path) -> str:
     monkeys = parse_monkeys(filename)
-    breakpoint()
-    return ""
+    for round in range(1, 20 + 1):
+        logger.debug("Round %d", round)
+        play_round(monkeys)
+    logger.debug("Finished")
+    inspected = (monkey.inspected_items for monkey in monkeys.values())
+    best_two = heapq.nlargest(2, inspected)
+    score = reduce(operator.mul, best_two)
+    return str(score)
 
 
 if __name__ == "__main__":
