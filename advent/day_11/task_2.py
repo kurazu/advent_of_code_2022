@@ -14,7 +14,10 @@ logger = logging.getLogger(__name__)
 @wrap_main
 def main(filename: Path) -> str:
     monkeys = parse_monkeys(filename)
-    play_rounds(monkeys=monkeys, worry_level_drop=1, n_rounds=10_000)
+    divisor = reduce(
+        operator.mul, (monkey.test_divisible_by for monkey in monkeys.values())
+    )
+    play_rounds(monkeys=monkeys, normalization=lambda x: x % divisor, n_rounds=10_000)
     inspected = (monkey.inspected_items for monkey in monkeys.values())
     best_two = heapq.nlargest(2, inspected)
     score = reduce(operator.mul, best_two)

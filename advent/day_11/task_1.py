@@ -5,9 +5,11 @@ import re
 from dataclasses import dataclass, field
 from functools import reduce
 from pathlib import Path
-from typing import NewType, Protocol
+from typing import Callable, NewType, Protocol
 
+import numpy as np
 import tqdm
+from numpy import typing as npt
 
 from ..cli_utils import wrap_main
 from ..io_utils import get_stripped_lines
@@ -16,11 +18,10 @@ from ..logs import setup_logging
 logger = logging.getLogger(__name__)
 
 MonkeyId = NewType("MonkeyId", int)
-WorryLevel = NewType("WorryLevel", int)
 
 
 class Operation(Protocol):
-    def __call__(self, old: WorryLevel) -> WorryLevel:
+    def __call__(self, old: npt.NDArray[np.int64]) -> npt.NDArray[np.int64]:
         ...
 
 
@@ -28,29 +29,29 @@ class Operation(Protocol):
 class Addition:
     operand: int
 
-    def __call__(self, old: WorryLevel) -> WorryLevel:
-        return WorryLevel(old + self.operand)
+    def __call__(self, old: npt.NDArray[np.int64]) -> npt.NDArray[np.int64]:
+        return old + self.operand
 
 
 @dataclass
 class Multiplication:
     operand: int
 
-    def __call__(self, old: WorryLevel) -> WorryLevel:
-        return WorryLevel(old * self.operand)
+    def __call__(self, old: npt.NDArray[np.int64]) -> npt.NDArray[np.int64]:
+        return old * self.operand
 
 
 @dataclass
 class Square:
-    def __call__(self, old: WorryLevel) -> WorryLevel:
-        return WorryLevel(old**2)
+    def __call__(self, old: npt.NDArray[np.int64]) -> npt.NDArray[np.int64]:
+        return old**2
 
 
 @dataclass
 class Monkey:
-    items: list[WorryLevel]
+    items: npt.NDArray[np.int64]
     operation: Operation
-    test_divisible_by: WorryLevel
+    test_divisible_by: int
     target_monkey_true: MonkeyId
     target_monkey_false: MonkeyId
     inspected_items: int = field(default=0, init=False)
@@ -74,10 +75,10 @@ def parse_id(line: str) -> MonkeyId:
     return MonkeyId(int(match.group("monkey_id")))
 
 
-def parse_starting_items(line: str) -> list[WorryLevel]:
+def parse_starting_items(line: str) -> list[int]:
     match = starting_items_pattern.match(line)
     assert match is not None, line
-    return [WorryLevel(int(item)) for item in match.group("starting_items").split(", ")]
+    return [int(item) for item in match.group("starting_items").split(", ")]
 
 
 def parse_operation(line: str) -> Operation:
@@ -94,10 +95,10 @@ def parse_operation(line: str) -> Operation:
         return Multiplication(int(operand))
 
 
-def parse_divisible_by(line: str) -> WorryLevel:
+def parse_divisible_by(line: str) -> int:
     match = test_pattern.match(line)
     assert match is not None, line
-    return WorryLevel(int(match.group("test_divisible_by")))
+    return int(match.group("test_divisible_by"))
 
 
 def parse_target_true(line: str) -> MonkeyId:
@@ -131,7 +132,7 @@ def parse_monkeys(filename: Path) -> dict[MonkeyId, Monkey]:
         target_monkey_false = parse_target_false(next(lines))
 
         monkeys[monkey_id] = Monkey(
-            items=starting_items,
+            items=np.array(starting_items, dtype=np.int64),
             operation=operation,
             test_divisible_by=test_divisible_by,
             target_monkey_true=target_monkey_true,
@@ -141,32 +142,41 @@ def parse_monkeys(filename: Path) -> dict[MonkeyId, Monkey]:
     return monkeys
 
 
-def play_round(monkeys: dict[MonkeyId, Monkey], worry_level_drop: int) -> None:
+EMPTY_ITEMS = np.empty((0,), dtype=np.int64)
+
+
+def play_round(
+    monkeys: dict[MonkeyId, Monkey],
+    normalization: Callable[[npt.NDArray[np.int64]], npt.NDArray[np.int64]],
+) -> None:
     for monkey_id, monkey in monkeys.items():
-        # logger.info("Monkey %d", monkey_id)
-        while monkey.items:
-            item = monkey.items.pop()
-            monkey.inspected_items += 1
-            new = monkey.operation(item)
-            new = WorryLevel(new // worry_level_drop)
-            if new % monkey.test_divisible_by == 0:
-                target_monkey = monkey.target_monkey_true
-            else:
-                target_monkey = monkey.target_monkey_false
-            monkeys[target_monkey].items.append(new)
+        monkey.inspected_items += len(monkey.items)
+        new = monkey.operation(monkey.items)
+        normalized = normalization(new)
+        divisible_mask = (normalized % monkey.test_divisible_by) == 0
+        true_items = normalized[divisible_mask]
+        false_items = normalized[~divisible_mask]
+        true_monkey = monkeys[monkey.target_monkey_true]
+        true_monkey.items = np.concatenate([true_monkey.items, true_items])
+        false_monkey = monkeys[monkey.target_monkey_false]
+        false_monkey.items = np.concatenate([false_monkey.items, false_items])
+        monkey.items = EMPTY_ITEMS
 
 
 def play_rounds(
-    monkeys: dict[MonkeyId, Monkey], *, worry_level_drop: int, n_rounds: int
+    monkeys: dict[MonkeyId, Monkey],
+    *,
+    normalization: Callable[[npt.NDArray[np.int64]], npt.NDArray[np.int64]],
+    n_rounds: int
 ) -> None:
     for round in tqdm.trange(n_rounds):
-        play_round(monkeys, worry_level_drop=worry_level_drop)
+        play_round(monkeys, normalization=normalization)
 
 
 @wrap_main
 def main(filename: Path) -> str:
     monkeys = parse_monkeys(filename)
-    play_rounds(monkeys=monkeys, worry_level_drop=3, n_rounds=20)
+    play_rounds(monkeys=monkeys, normalization=lambda x: x // 3, n_rounds=20)
     inspected = (monkey.inspected_items for monkey in monkeys.values())
     best_two = heapq.nlargest(2, inspected)
     score = reduce(operator.mul, best_two)
