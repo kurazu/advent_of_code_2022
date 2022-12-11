@@ -7,6 +7,8 @@ from functools import reduce
 from pathlib import Path
 from typing import NewType, Protocol
 
+import tqdm
+
 from ..cli_utils import wrap_main
 from ..io_utils import get_stripped_lines
 from ..logs import setup_logging
@@ -139,14 +141,14 @@ def parse_monkeys(filename: Path) -> dict[MonkeyId, Monkey]:
     return monkeys
 
 
-def play_round(monkeys: dict[MonkeyId, Monkey]) -> None:
+def play_round(monkeys: dict[MonkeyId, Monkey], worry_level_drop: int) -> None:
     for monkey_id, monkey in monkeys.items():
-        logger.info("Monkey %d", monkey_id)
+        # logger.info("Monkey %d", monkey_id)
         while monkey.items:
             item = monkey.items.pop()
             monkey.inspected_items += 1
             new = monkey.operation(item)
-            new = WorryLevel(new // 3)
+            new = WorryLevel(new // worry_level_drop)
             if new % monkey.test_divisible_by == 0:
                 target_monkey = monkey.target_monkey_true
             else:
@@ -154,13 +156,17 @@ def play_round(monkeys: dict[MonkeyId, Monkey]) -> None:
             monkeys[target_monkey].items.append(new)
 
 
+def play_rounds(
+    monkeys: dict[MonkeyId, Monkey], *, worry_level_drop: int, n_rounds: int
+) -> None:
+    for round in tqdm.trange(n_rounds):
+        play_round(monkeys, worry_level_drop=worry_level_drop)
+
+
 @wrap_main
 def main(filename: Path) -> str:
     monkeys = parse_monkeys(filename)
-    for round in range(1, 20 + 1):
-        logger.debug("Round %d", round)
-        play_round(monkeys)
-    logger.debug("Finished")
+    play_rounds(monkeys=monkeys, worry_level_drop=3, n_rounds=20)
     inspected = (monkey.inspected_items for monkey in monkeys.values())
     best_two = heapq.nlargest(2, inspected)
     score = reduce(operator.mul, best_two)

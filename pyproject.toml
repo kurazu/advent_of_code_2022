@@ -21,6 +21,7 @@ isort = "^5.10.1"
 flake8 = "^6.0.0"
 ipdb = "^0.13.9"
 pytest = "^7.2.0"
+tqdm = "^4.64.1"
 
 [build-system]
 requires = ["poetry-core"]
