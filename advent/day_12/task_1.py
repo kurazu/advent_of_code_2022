@@ -66,15 +66,10 @@ def find_path(
     tiles: npt.NDArray[np.uint8],
     *,
     start_position: Position,
-    end_position: Position,
     can_climb_callback: CanClimbCallback,
     early_stopping_callback: EarlyStoppingCallback,
 ) -> int:
-    logger.debug(
-        "Searching for best path between %s and %s",
-        start_position,
-        end_position,
-    )
+    logger.debug("Searching for best path from %s", start_position)
     height, width = tiles.shape
     visited = np.zeros_like(tiles, dtype=bool)
     costs = np.full_like(tiles, fill_value=np.iinfo(np.uint32).max, dtype=np.uint32)
@@ -135,7 +130,6 @@ def main(filename: Path) -> str:
     cost = find_path(
         board.tiles,
         start_position=board.start_position,
-        end_position=board.end_position,
         can_climb_callback=(
             lambda current_elevation, neighbor_elevation: neighbor_elevation
             <= current_elevation + 1
