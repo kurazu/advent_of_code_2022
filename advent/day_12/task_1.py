@@ -49,7 +49,7 @@ def parse_board(filename: Path) -> Board:
 
 def argmin2d(array: npt.NDArray[np.uint32]) -> Position:
     y, x = np.unravel_index(np.argmin(array), array.shape)
-    return Position(y=y, x=x)
+    return Position(y=int(y), x=int(x))
 
 
 class CanClimbCallback(Protocol):
