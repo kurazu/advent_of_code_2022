@@ -2,7 +2,7 @@ import functools
 import itertools as it
 import logging
 from pathlib import Path
-from typing import Iterable, NamedTuple
+from typing import Callable, Iterable, NamedTuple, cast
 
 import more_itertools as mit
 import numpy as np
@@ -45,7 +45,11 @@ def get_board(
         return Position(y=point.y - min_y, x=point.x - min_x)
 
     scaled_lines: Iterable[Iterable[Position]] = map(
-        functools.partial(map, scale_point), lines
+        cast(
+            Callable[[Iterable[Position]], Iterable[Position]],
+            functools.partial(map, scale_point),
+        ),
+        lines,
     )
 
     for line in scaled_lines:
