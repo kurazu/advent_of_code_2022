@@ -29,7 +29,7 @@ def get_lines(filename: Path) -> Iterable[list[Position]]:
 
 def get_board(
     starting_point: Position, lines: list[list[Position]]
-) -> npt.NDArray[np.uint8]:
+) -> tuple[npt.NDArray[np.uint8], Position]:
     def get_points() -> Iterable[Position]:
         return it.chain([starting_point], it.chain.from_iterable(lines))
 
@@ -54,17 +54,58 @@ def get_board(
             lower_y, upper_y = mit.minmax((start_point.y, end_point.y))
             board[lower_y : upper_y + 1, lower_x : upper_x + 1] = 1
 
-    breakpoint()
+    scaled_starting_point = scale_point(starting_point)
+    return board, scaled_starting_point
+
+
+def get_next_positions(position: Position) -> Iterable[Position]:
+    yield Position(y=position.y + 1, x=position.x)
+    yield Position(y=position.y + 1, x=position.x - 1)
+    yield Position(y=position.y + 1, x=position.x + 1)
+
+
+def simulate(board: npt.NDArray[np.uint8], starting_point: Position) -> int:
+    height, width = board.shape
+
+    def is_out_of_bounds(position: Position) -> bool:
+        return (
+            position.x < 0
+            or position.x >= width
+            or position.y < 0
+            or position.y >= height
+        )
+
+    units = 0
+    while True:
+        # new grain of sand
+        current = starting_point
+        while True:
+            for position in get_next_positions(current):
+                if is_out_of_bounds(position):
+                    # sand fell out of the map, step simulation
+                    return units
+                elif not board[position]:
+                    # position is empty, can move
+                    current = position
+                    break
+                else:
+                    # position in occupied, can't move there, try another position
+                    continue
+            else:
+                # node of the positions were empty, sand will rest here
+                board[current] = 2
+                units += 1
+                break
 
 
 @wrap_main
 def main(filename: Path) -> str:
     lines = list(get_lines(filename))
     starting_point = Position(y=0, x=500)
-    board = get_board(starting_point, lines)
-
-    breakpoint()
-    return ""
+    board, scaled_starting_point = get_board(starting_point, lines)
+    units_of_sand = simulate(board, scaled_starting_point)
+    print(board)
+    return str(units_of_sand)
 
 
 if __name__ == "__main__":
