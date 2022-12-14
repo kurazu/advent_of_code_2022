@@ -2,7 +2,7 @@ import functools
 import itertools as it
 import logging
 from pathlib import Path
-from typing import Callable, Iterable, NamedTuple, cast
+from typing import Callable, Iterable, NamedTuple, NoReturn, cast
 
 import more_itertools as mit
 import numpy as np
@@ -68,7 +68,17 @@ def get_next_positions(position: Position) -> Iterable[Position]:
     yield Position(y=position.y + 1, x=position.x + 1)
 
 
-def simulate(board: npt.NDArray[np.uint8], starting_point: Position) -> int:
+class SandOutOfBoundsException(Exception):
+    def __init__(self, units: int):
+        self.units = units
+
+
+class StartPointBlockedException(Exception):
+    def __init__(self, units: int):
+        self.units = units
+
+
+def simulate(board: npt.NDArray[np.uint8], starting_point: Position) -> NoReturn:
     height, width = board.shape
 
     def is_out_of_bounds(position: Position) -> bool:
@@ -83,11 +93,14 @@ def simulate(board: npt.NDArray[np.uint8], starting_point: Position) -> int:
     while True:
         # new grain of sand
         current = starting_point
+        if board[current]:
+            # starting point is blocked, simulation is over
+            raise StartPointBlockedException(units)
         while True:
             for position in get_next_positions(current):
                 if is_out_of_bounds(position):
                     # sand fell out of the map, step simulation
-                    return units
+                    raise SandOutOfBoundsException(units)
                 elif not board[position]:
                     # position is empty, can move
                     current = position
@@ -107,9 +120,13 @@ def main(filename: Path) -> str:
     lines = list(get_lines(filename))
     starting_point = Position(y=0, x=500)
     board, scaled_starting_point = get_board(starting_point, lines)
-    units_of_sand = simulate(board, scaled_starting_point)
-    print(board)
-    return str(units_of_sand)
+    try:
+        simulate(board, scaled_starting_point)
+    except SandOutOfBoundsException as e:
+        units_of_sand = e.units
+        return str(units_of_sand)
+    else:
+        raise RuntimeError("Simulation should have ended with an exception")
 
 
 if __name__ == "__main__":
