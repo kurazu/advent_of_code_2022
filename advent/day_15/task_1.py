@@ -112,8 +112,6 @@ def main(filename: Path, target_y: int) -> None:
 
 def can_have_beacon(sensors: Iterable[Sensor], point: Position) -> bool:
     for sensor in sensors:
-        if point == sensor.beacon:
-            return True  # there is a beacon there already
         if manhattan_distance(sensor.position, point) <= sensor.r:
             return False
     return True

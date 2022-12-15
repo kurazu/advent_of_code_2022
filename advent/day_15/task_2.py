@@ -8,7 +8,12 @@ import more_itertools as mit
 import tqdm
 
 from ..logs import setup_logging
-from .task_1 import get_highest_distance_between_sensor_and_beacon, parse_sensors
+from .task_1 import (
+    Position,
+    can_have_beacon,
+    get_highest_distance_between_sensor_and_beacon,
+    parse_sensors,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -38,33 +43,14 @@ def main(filename: Path, max_x: int, max_y: int) -> None:
         highest_distance_between_sensor_and_beacon,
     )
 
-    for x in range(max_x + 1):
-        pass
-
-    def get_sensor_and_beacon_positions() -> Iterable[Position]:
-        for sensor in sensors:
-            yield sensor.position
-            yield sensor.beacon
-
-    min_x, max_x = mit.minmax(map(lambda p: p.x, get_sensor_and_beacon_positions()))
-    min_y, max_y = mit.minmax(map(lambda p: p.y, get_sensor_and_beacon_positions()))
-    min_x -= highest_distance_between_sensor_and_beacon
-    max_x += highest_distance_between_sensor_and_beacon
-    min_y -= highest_distance_between_sensor_and_beacon
-    max_y += highest_distance_between_sensor_and_beacon
-
-    points_in_range = 0
-    for x in tqdm.trange(min_x, max_x + 1):
-        point = Position(y=target_y, x=x)
-        for sensor in sensors:
-            if point == sensor.beacon:
-                break  # there is a beacon there already
-            r = manhattan_distance(sensor.position, sensor.beacon)
-            if manhattan_distance(sensor.position, point) <= r:
-                points_in_range += 1
-                break
-
-    click.echo(str(points_in_range))
+    for y in tqdm.trange(max_y + 1, desc="y"):
+        for x in tqdm.trange(max_x + 1, desc="x"):
+            point = Position(y=y, x=x)
+            if can_have_beacon(sensors, point):
+                logger.debug("Point %s can have a beacon", point)
+                click.echo(str(point.x * 4000000 + point.y))
+                return
+    raise AssertionError()
 
 
 if __name__ == "__main__":
