@@ -1,5 +1,7 @@
+import functools
 import logging
 import re
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, NamedTuple
 
@@ -18,9 +20,18 @@ class Position(NamedTuple):
     x: int
 
 
-class Sensor(NamedTuple):
+def manhattan_distance(a: Position, b: Position) -> int:
+    return abs(a.y - b.y) + abs(a.x - b.x)
+
+
+@dataclass
+class Sensor:
     position: Position
     beacon: Position
+
+    @functools.cached_property
+    def r(self) -> int:
+        return manhattan_distance(self.position, self.beacon)
 
 
 # regexp pattern to match 'Sensor at x=2, y=18: closest beacon is at x=-2, y=15'
@@ -46,8 +57,12 @@ BEACON = 2
 RANGE = 3
 
 
-def manhattan_distance(a: Position, b: Position) -> int:
-    return abs(a.y - b.y) + abs(a.x - b.x)
+def get_highest_distance_between_sensor_and_beacon(sensors: Iterable[Sensor]) -> int:
+    return max(
+        abs(sensor.position.y - sensor.beacon.y)
+        + abs(sensor.position.x - sensor.beacon.x)
+        for sensor in sensors
+    )
 
 
 @click.command()
@@ -66,10 +81,8 @@ def manhattan_distance(a: Position, b: Position) -> int:
 def main(filename: Path, target_y: int) -> None:
     sensors = list(parse_sensors(filename))
 
-    highest_distance_between_sensor_and_beacon = max(
-        abs(sensor.position.y - sensor.beacon.y)
-        + abs(sensor.position.x - sensor.beacon.x)
-        for sensor in sensors
+    highest_distance_between_sensor_and_beacon = (
+        get_highest_distance_between_sensor_and_beacon(sensors)
     )
     logger.debug(
         "Highest distance between sensor and beacon: %d",
@@ -91,15 +104,19 @@ def main(filename: Path, target_y: int) -> None:
     points_in_range = 0
     for x in tqdm.trange(min_x, max_x + 1):
         point = Position(y=target_y, x=x)
-        for sensor in sensors:
-            if point == sensor.beacon:
-                break  # there is a beacon there already
-            r = manhattan_distance(sensor.position, sensor.beacon)
-            if manhattan_distance(sensor.position, point) <= r:
-                points_in_range += 1
-                break
+        if not can_have_beacon(sensors, point):
+            points_in_range += 1
 
     click.echo(str(points_in_range))
+
+
+def can_have_beacon(sensors: Iterable[Sensor], point: Position) -> bool:
+    for sensor in sensors:
+        if point == sensor.beacon:
+            return True  # there is a beacon there already
+        if manhattan_distance(sensor.position, point) <= sensor.r:
+            return False
+    return True
 
 
 if __name__ == "__main__":
