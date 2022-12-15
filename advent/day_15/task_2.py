@@ -122,18 +122,23 @@ def main(filename: Path, max_x: int, max_y: int) -> None:
 
     sensors_x = np.array([s.position.x for s in sensors], np.int32)
     sensors_y = np.array([s.position.y for s in sensors], np.int32)
-    sensors_r = np.array([s.r for s in sensors], np.int32)
+    sensors_r = np.array([s.r for s in sensors], np.int32)[:, np.newaxis]
 
     beacon_positions = {sensor.beacon for sensor in sensors}
+    batch_size = 5000
 
     for y in tqdm.trange(max_y + 1, desc="y"):
-        y_dist = np.abs(sensors_y - y)
-        for x in tqdm.trange(max_x + 1, desc="x"):
-            point = Position(y=y, x=x)
-            distance_to_sensors = np.abs(sensors_x - x) + y_dist
-            if np.any(distance_to_sensors <= sensors_r) or point in beacon_positions:
+        y_dist = np.abs(sensors_y - y)[:, np.newaxis]
+        for start_x in range(0, max_x + 1, batch_size):
+            x = np.arange(start_x, min(max_x, start_x + batch_size), dtype=np.int32)
+            x_dist = np.abs(np.subtract(sensors_x[:, np.newaxis], x))
+            dist = x_dist + y_dist
+            in_radius = np.any(dist <= sensors_r, axis=0)
+            if np.all(in_radius):
                 continue
-
+            idx = np.argmin(in_radius)
+            match_x = x[idx]
+            point = Position(y=y, x=match_x)
             logger.debug("Point %s can have a beacon", point)
             click.echo(str(point.x * 4000000 + point.y))
             return
