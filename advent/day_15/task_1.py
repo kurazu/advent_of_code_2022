@@ -1,4 +1,3 @@
-import itertools as it
 import logging
 import re
 from pathlib import Path
@@ -6,11 +5,8 @@ from typing import Iterable, NamedTuple
 
 import click
 import more_itertools as mit
-import numpy as np
 import tqdm
-from numpy import typing as npt
 
-from ..cli_utils import wrap_main
 from ..io_utils import get_stripped_lines
 from ..logs import setup_logging
 
