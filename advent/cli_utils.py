@@ -20,5 +20,6 @@ def wrap_main(main: Callable[[Path], str]) -> Callable[[], None]:
                 readable=True,
                 path_type=Path,
             ),
+            required=True,
         )(main_wrapper)
     )
