@@ -33,6 +33,12 @@ class Sensor:
     def r(self) -> int:
         return manhattan_distance(self.position, self.beacon)
 
+    def get_sensor_x(self) -> int:
+        return self.position.x
+
+    def get_sensor_y(self) -> int:
+        return self.position.y
+
 
 # regexp pattern to match 'Sensor at x=2, y=18: closest beacon is at x=-2, y=15'
 pattern = re.compile(

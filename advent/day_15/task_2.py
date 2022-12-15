@@ -1,21 +1,96 @@
+import bisect
 import logging
 import re
 from pathlib import Path
 from typing import Iterable, NamedTuple
 
 import click
+import matplotlib.pyplot as plt
 import more_itertools as mit
+import numpy as np
 import tqdm
+from matplotlib.patches import Ellipse, Rectangle
 
 from ..logs import setup_logging
 from .task_1 import (
     Position,
+    Sensor,
     can_have_beacon,
     get_highest_distance_between_sensor_and_beacon,
+    manhattan_distance,
     parse_sensors,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def relu(x: int) -> int:
+    return max(0, x)
+
+
+def get_closest_sensor_by_x(sensors_by_x: list[Sensor], x: int) -> Sensor:
+    left_i = max(0, bisect.bisect_left(sensors_by_x, x, key=Sensor.get_sensor_x))
+    right_i = min(
+        len(sensors_by_x) - 1,
+        bisect.bisect_right(sensors_by_x, x, key=Sensor.get_sensor_x),
+    )
+    indices = {left_i, right_i}
+    sensors = map(sensors_by_x.__getitem__, indices)
+    return min(sensors, key=lambda s: abs(s.position.x - x))
+
+
+def get_closest_sensor_by_y(sensors_by_y: list[Sensor], y: int) -> Sensor:
+    left_i = max(0, bisect.bisect_left(sensors_by_y, y, key=Sensor.get_sensor_y))
+    right_i = min(
+        len(sensors_by_y) - 1,
+        bisect.bisect_right(sensors_by_y, y, key=Sensor.get_sensor_y),
+    )
+    indices = {left_i, right_i}
+    sensors = map(sensors_by_y.__getitem__, indices)
+    return min(sensors, key=lambda s: abs(s.position.y - y))
+
+
+def visualize_sensors(
+    sensors: Iterable[Sensor], range_max_x: int, range_max_y: int
+) -> None:
+
+    fig, ax = plt.subplots(subplot_kw={"aspect": "equal"})
+    for sensor in sensors:
+        ellipse = Ellipse(
+            xy=(sensor.position.x, sensor.position.y),
+            width=sensor.r * 2,
+            height=sensor.r * 2,
+        )
+        ax.add_artist(ellipse)
+        # ellipse.set_clip_box(ax.bbox)
+        ellipse.set_alpha(0.5)
+
+    # automatically set ranges on x and y axes
+
+    min_x, max_x = mit.minmax(map(lambda p: p.x, map(lambda s: s.position, sensors)))
+    min_y, max_y = mit.minmax(map(lambda p: p.y, map(lambda s: s.position, sensors)))
+    highest_distance_between_sensor_and_beacon = max(map(lambda s: s.r, sensors))
+    min_x -= highest_distance_between_sensor_and_beacon
+    max_x += highest_distance_between_sensor_and_beacon
+    min_y -= highest_distance_between_sensor_and_beacon
+    max_y += highest_distance_between_sensor_and_beacon
+
+    ax.set_xlim(min_x, max_x)
+    ax.set_ylim(min_y, max_y)
+
+    # draw rectange from 0,0 to max_x,max_y
+    rect = Rectangle(
+        xy=(0, 0),
+        width=range_max_x,
+        height=range_max_y,
+        fill=False,
+        # set edge color to red
+        edgecolor="red",
+    )
+    ax.add_artist(rect)
+
+    # draw a dot at x=14, y=11
+    ax.plot(14, 11, "ro", markersize=1)
 
 
 @click.command()
@@ -42,14 +117,26 @@ def main(filename: Path, max_x: int, max_y: int) -> None:
         "Highest distance between sensor and beacon: %d",
         highest_distance_between_sensor_and_beacon,
     )
+    visualize_sensors(sensors, max_x, max_y)
+    plt.savefig("sensors.png")
+
+    sensors_x = np.array([s.position.x for s in sensors], np.int32)
+    sensors_y = np.array([s.position.y for s in sensors], np.int32)
+    sensors_r = np.array([s.r for s in sensors], np.int32)
+
+    beacon_positions = {sensor.beacon for sensor in sensors}
 
     for y in tqdm.trange(max_y + 1, desc="y"):
+        y_dist = np.abs(sensors_y - y)
         for x in tqdm.trange(max_x + 1, desc="x"):
             point = Position(y=y, x=x)
-            if can_have_beacon(sensors, point):
-                logger.debug("Point %s can have a beacon", point)
-                click.echo(str(point.x * 4000000 + point.y))
-                return
+            distance_to_sensors = np.abs(sensors_x - x) + y_dist
+            if np.any(distance_to_sensors <= sensors_r) or point in beacon_positions:
+                continue
+
+            logger.debug("Point %s can have a beacon", point)
+            click.echo(str(point.x * 4000000 + point.y))
+            return
     raise AssertionError()
 
 
