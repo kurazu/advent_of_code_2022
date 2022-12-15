@@ -1,6 +1,8 @@
 import bisect
 import logging
+import multiprocessing as mp
 import re
+from functools import partial
 from pathlib import Path
 from typing import Iterable, NamedTuple
 
@@ -10,6 +12,7 @@ import more_itertools as mit
 import numpy as np
 import tqdm
 from matplotlib.patches import Ellipse, Rectangle
+from numpy import typing as npt
 
 from ..logs import setup_logging
 from .task_1 import (
@@ -93,6 +96,28 @@ def visualize_sensors(
     ax.plot(14, 11, "ro", markersize=1)
 
 
+def find_points(
+    sensors_x: npt.NDArray[np.int32],
+    sensors_y: npt.NDArray[np.int32],
+    sensors_r: npt.NDArray[np.int32],
+    max_x: int,
+    y: int,
+    batch_size: int = 5000,
+) -> Position | None:
+    y_dist = np.abs(sensors_y - y)[:, np.newaxis]
+    for start_x in range(0, max_x + 1, batch_size):
+        x = np.arange(start_x, min(max_x, start_x + batch_size), dtype=np.int32)
+        x_dist = np.abs(np.subtract(sensors_x[:, np.newaxis], x))
+        dist = x_dist + y_dist
+        in_radius = np.any(dist <= sensors_r, axis=0)
+        if np.all(in_radius):
+            continue
+        idx = np.argmin(in_radius)
+        match_x = x[idx]
+        return Position(y=y, x=match_x)
+    return None
+
+
 @click.command()
 @click.argument(
     "filename",
@@ -125,24 +150,28 @@ def main(filename: Path, max_x: int, max_y: int) -> None:
     sensors_r = np.array([s.r for s in sensors], np.int32)[:, np.newaxis]
 
     beacon_positions = {sensor.beacon for sensor in sensors}
-    batch_size = 5000
 
-    for y in tqdm.trange(max_y + 1, desc="y"):
-        y_dist = np.abs(sensors_y - y)[:, np.newaxis]
-        for start_x in range(0, max_x + 1, batch_size):
-            x = np.arange(start_x, min(max_x, start_x + batch_size), dtype=np.int32)
-            x_dist = np.abs(np.subtract(sensors_x[:, np.newaxis], x))
-            dist = x_dist + y_dist
-            in_radius = np.any(dist <= sensors_r, axis=0)
-            if np.all(in_radius):
-                continue
-            idx = np.argmin(in_radius)
-            match_x = x[idx]
-            point = Position(y=y, x=match_x)
+    with mp.Pool(4) as pool:
+        points_matching: Iterable[Position] = filter(
+            None,
+            tqdm.tqdm(
+                pool.imap_unordered(
+                    partial(
+                        find_points,
+                        sensors_x,
+                        sensors_y,
+                        sensors_r,
+                        max_x,
+                    ),
+                    range(max_y + 1),
+                ),
+                total=max_y + 1,
+            ),
+        )
+        for point in points_matching:
             logger.debug("Point %s can have a beacon", point)
             click.echo(str(point.x * 4000000 + point.y))
             return
-    raise AssertionError()
 
 
 if __name__ == "__main__":
