@@ -7,6 +7,7 @@ from typing import Iterable, NamedTuple
 import click
 import more_itertools as mit
 import numpy as np
+import tqdm
 from numpy import typing as npt
 
 from ..cli_utils import wrap_main
@@ -49,6 +50,10 @@ BEACON = 2
 RANGE = 3
 
 
+def manhattan_distance(a: Position, b: Position) -> int:
+    return abs(a.y - b.y) + abs(a.x - b.x)
+
+
 @click.command()
 @click.argument(
     "filename",
@@ -62,13 +67,17 @@ RANGE = 3
     required=True,
 )
 @click.argument("target_y", type=int, required=True)
-def main(filename: Path, target_y: int) -> str:
+def main(filename: Path, target_y: int) -> None:
     sensors = list(parse_sensors(filename))
 
     highest_distance_between_sensor_and_beacon = max(
         abs(sensor.position.y - sensor.beacon.y)
         + abs(sensor.position.x - sensor.beacon.x)
         for sensor in sensors
+    )
+    logger.debug(
+        "Highest distance between sensor and beacon: %d",
+        highest_distance_between_sensor_and_beacon,
     )
 
     def get_sensor_and_beacon_positions() -> Iterable[Position]:
@@ -83,42 +92,18 @@ def main(filename: Path, target_y: int) -> str:
     min_y -= highest_distance_between_sensor_and_beacon
     max_y += highest_distance_between_sensor_and_beacon
 
-    logger.debug(
-        "Highest distance between sensor and beacon: %d",
-        highest_distance_between_sensor_and_beacon,
-    )
-    width = max_x - min_x + 1
-    height = max_y - min_y + 1
-    logger.debug("Creating board of size %d x %d", width, height)
-    breakpoint()
-    board = np.zeros((height, width), dtype=np.uint8)
-    for sensor in sensors:
-        r = abs(sensor.position.y - sensor.beacon.y) + abs(
-            sensor.position.x - sensor.beacon.x
-        )
-        for y in range(sensor.position.y - r, sensor.position.y + r + 1):
-            for x in range(sensor.position.x - r, sensor.position.x + r + 1):
-                if abs(sensor.position.y - y) + abs(sensor.position.x - x) <= r:
-                    board[y - min_y, x - min_x] = RANGE
-    for sensor in sensors:
-        board[sensor.position.y - min_y, sensor.position.x - min_x] = SENSOR
-        board[sensor.beacon.y - min_y, sensor.beacon.x - min_x] = BEACON
+    points_in_range = 0
+    for x in tqdm.trange(min_x, max_x + 1):
+        point = Position(y=target_y, x=x)
+        for sensor in sensors:
+            if point == sensor.beacon:
+                break  # there is a beacon there already
+            r = manhattan_distance(sensor.position, sensor.beacon)
+            if manhattan_distance(sensor.position, point) <= r:
+                points_in_range += 1
+                break
 
-    print(visualize_board(board))
-    target_y = 10
-    adjusted_target_y = target_y - min_y
-    target_row = board[adjusted_target_y]
-    count = np.sum(target_row != EMPTY) - np.sum(target_row == BEACON)
-    return str(count)
-
-
-def visualize_board(board: npt.NDArray[np.uint8]) -> str:
-    height, width = board.shape
-    char_map = {EMPTY: ".", SENSOR: "S", BEACON: "B", RANGE: "*"}
-    rows = ("".join(map(char_map.__getitem__, row)) for row in board)
-    content = "\n".join(map(lambda s: f"|{s}|", rows))
-    edge = "-" * (width + 2)
-    return "\n".join([edge, content, edge])
+    click.echo(str(points_in_range))
 
 
 if __name__ == "__main__":
