@@ -2,96 +2,89 @@ import itertools as it
 import logging
 from pathlib import Path
 
-import tqdm
-
 from ..cli_utils import wrap_main
 from ..logs import setup_logging
-from .task_1 import Graph, parse_graph
+from .task_1 import Graph, calculate_distances, get_possible_moves, parse_graph
 
 logger = logging.getLogger(__name__)
 
 
-def calculate_distances(graph: Graph) -> dict[str, dict[str, int]]:
-    distances: dict[str, dict[str, int]] = {}
-
-    all_nodes = set(graph.nodes)
-
-    def _calculate_distances(node: str) -> dict[str, int]:
-        visited: set[str] = set()
-        costs: dict[str, int] = {node: 0}
-
-        while len(visited) != len(all_nodes):
-            lowest_unvisited_node = min(
-                it.filterfalse(visited.__contains__, costs), key=costs.get
-            )
-            unvisited_neighbours = set(graph.edges[lowest_unvisited_node]) - visited
-            for neighbour in unvisited_neighbours:
-                costs[neighbour] = costs[lowest_unvisited_node] + 1
-            visited.add(lowest_unvisited_node)
-
-        return costs
-
-    for node in tqdm.tqdm(all_nodes, desc="Calculating distances"):
-        distances[node] = _calculate_distances(node)
-    return distances
-
-
 def dfs(graph: Graph, *, time: int) -> int:
     distances = calculate_distances(graph)
-    breakpoint()
-    return 0
-    cache: dict[tuple[frozenset[str], str, str, bool, int], int] = {}
+    cache: dict[tuple[frozenset[str], str, str, int, int], int] = {}
+
+    # it only makes sense to open valves that have a positive throughput
+    all_working_nodes = frozenset(
+        node for node, throughput in graph.nodes.items() if throughput > 0
+    )
 
     def _dfs(
         *,
         opened: frozenset[str],
         current_you: str,
         current_elephant: str,
-        your_turn: bool,
-        remaining_time: int
+        remaining_time_you: int,
+        remaining_time_elephant: int
     ) -> int:
-        if remaining_time == 0:
-            return 0
-        key = (opened, current_you, current_elephant, your_turn, remaining_time)
+        key = (
+            opened,
+            current_you,
+            current_elephant,
+            remaining_time_you,
+            remaining_time_elephant,
+        )
         if key in cache:
             return cache[key]
-        # at each step we taka a decision: either we open a new value or we move
-        new_remaining_time = remaining_time if your_turn else (remaining_time - 1)
-        possible_scores: list[int] = [0]
-        current = current_you if your_turn else current_elephant
-        can_open_current_valve = current not in opened and graph.nodes[current] > 0
-        if can_open_current_valve:
-            current_throughput = graph.nodes[current]
-            open_score = (
-                _dfs(
-                    opened=opened | {current},
-                    current_you=current_you,
+        # determine which valves are left to be opened
+        your_possible_valves = get_possible_moves(
+            throughputs=graph.nodes,
+            all_working_nodes=all_working_nodes,
+            opened=opened,
+            distances_from_current=distances[current_you],
+            remaining_time=remaining_time_you,
+        )
+        total_rewards: list[int] = []
+        for you_valve in your_possible_valves:
+            elefant_possible_valves = get_possible_moves(
+                throughputs=graph.nodes,
+                all_working_nodes=all_working_nodes,
+                opened=opened | {you_valve.node},
+                distances_from_current=distances[current_elephant],
+                remaining_time=remaining_time_elephant,
+            )
+            total_rewards.append(
+                you_valve.reward
+                + _dfs(
+                    opened=opened | {you_valve.node},
+                    current_you=you_valve.node,
                     current_elephant=current_elephant,
-                    your_turn=not your_turn,
-                    remaining_time=new_remaining_time,
+                    remaining_time_you=remaining_time_you - you_valve.cost,
+                    remaining_time_elephant=remaining_time_elephant,
                 )
-                + (remaining_time - 1) * current_throughput
             )
-            possible_scores.append(open_score)
-        possible_destinations = graph.edges[current]
-        for destination in possible_destinations:
-            move_score = _dfs(
-                opened=opened,
-                current_you=destination if your_turn else current_you,
-                current_elephant=destination if not your_turn else current_elephant,
-                your_turn=not your_turn,
-                remaining_time=new_remaining_time,
-            )
-            possible_scores.append(move_score)
-        best_score = cache[key] = max(possible_scores)
-        return best_score
+            for elefant_valve in elefant_possible_valves:
+                total_rewards.append(
+                    you_valve.reward
+                    + elefant_valve.reward
+                    + _dfs(
+                        opened=opened | {you_valve.node, elefant_valve.node},
+                        current_you=you_valve.node,
+                        current_elephant=elefant_valve.node,
+                        remaining_time_you=remaining_time_you - you_valve.cost,
+                        remaining_time_elephant=remaining_time_elephant
+                        - elefant_valve.cost,
+                    )
+                )
+        best_reward = cache[key] = max(total_rewards, default=0)
+
+        return best_reward
 
     return _dfs(
         opened=frozenset(),
         current_you="AA",
         current_elephant="AA",
-        your_turn=True,
-        remaining_time=time,
+        remaining_time_you=time,
+        remaining_time_elephant=time,
     )
 
 
