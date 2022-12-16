@@ -5,7 +5,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from functools import partial
 from pathlib import Path
-from typing import NamedTuple
+from typing import Iterable, NamedTuple
 
 import tqdm
 
@@ -80,6 +80,26 @@ def relu(x: int) -> int:
     return max(0, x)
 
 
+def get_possible_moves(
+    *,
+    throughputs: dict[str, int],
+    all_working_nodes: frozenset[str],
+    opened: frozenset[str],
+    distances_from_current: dict[str, int],
+    remaining_time: int,
+) -> Iterable[PossibleValve]:
+    for node in all_working_nodes - opened:
+        # cost is number of minutes of walking + one minute to open the valve
+        cost = distances_from_current[node] + 1
+        if cost >= remaining_time:
+            # do not analyse valves that cannot be reached
+            # or that are reached in the last minute
+            continue
+        # reward would be the throughput of the valve times the remaining time
+        reward = throughputs[node] * relu(remaining_time - cost)
+        yield PossibleValve(node, cost, reward)
+
+
 def dfs(graph: Graph, *, time: int) -> int:
     distances = calculate_distances(graph)
     cache: dict[tuple[frozenset[str], str, int], int] = {}
@@ -94,17 +114,13 @@ def dfs(graph: Graph, *, time: int) -> int:
         if key in cache:
             return cache[key]
         # determine which valves are left to be opened
-        possible_valves: list[PossibleValve] = []
-        for node in all_working_nodes - opened:
-            # cost is number of minutes of walking + one minute to open the valve
-            cost = distances[current][node] + 1
-            if cost >= remaining_time:
-                # do not analyse valves that cannot be reached
-                # or that are reached in the last minute
-                continue
-            # reward would be the throughput of the valve times the remaining time
-            reward = graph.nodes[node] * relu(remaining_time - cost)
-            possible_valves.append(PossibleValve(node, cost, reward))
+        possible_valves = get_possible_moves(
+            throughputs=graph.nodes,
+            all_working_nodes=all_working_nodes,
+            opened=opened,
+            distances_from_current=distances[current],
+            remaining_time=remaining_time,
+        )
         # order the possible values by potential reward
         # possible_valves.sort(key=lambda valve: valve.reward, reverse=True)
         total_rewards = (
