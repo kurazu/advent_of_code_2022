@@ -1,9 +1,13 @@
+import itertools as it
 import logging
 import re
 from collections import defaultdict
 from dataclasses import dataclass, field
 from functools import partial
 from pathlib import Path
+from typing import NamedTuple
+
+import tqdm
 
 from ..cli_utils import wrap_main
 from ..io_utils import get_stripped_lines
@@ -41,39 +45,80 @@ def parse_graph(filename: Path) -> Graph:
     return graph
 
 
+def calculate_distances(graph: Graph) -> dict[str, dict[str, int]]:
+    distances: dict[str, dict[str, int]] = {}
+
+    all_nodes = set(graph.nodes)
+
+    def _calculate_distances(node: str) -> dict[str, int]:
+        visited: set[str] = set()
+        costs: dict[str, int] = {node: 0}
+
+        while len(visited) != len(all_nodes):
+            lowest_unvisited_node = min(
+                it.filterfalse(visited.__contains__, costs), key=costs.__getitem__
+            )
+            unvisited_neighbours = set(graph.edges[lowest_unvisited_node]) - visited
+            for neighbour in unvisited_neighbours:
+                costs[neighbour] = costs[lowest_unvisited_node] + 1
+            visited.add(lowest_unvisited_node)
+
+        return costs
+
+    for node in tqdm.tqdm(all_nodes, desc="Calculating distances"):
+        distances[node] = _calculate_distances(node)
+    return distances
+
+
+class PossibleValve(NamedTuple):
+    node: str
+    cost: int
+    reward: int
+
+
+def relu(x: int) -> int:
+    return max(0, x)
+
+
 def dfs(graph: Graph, *, time: int) -> int:
+    distances = calculate_distances(graph)
     cache: dict[tuple[frozenset[str], str, int], int] = {}
 
+    # it only makes sense to open valves that have a positive throughput
+    all_working_nodes = frozenset(
+        node for node, throughput in graph.nodes.items() if throughput > 0
+    )
+
     def _dfs(*, opened: frozenset[str], current: str, remaining_time: int) -> int:
-        if remaining_time == 0:
-            return 0
         key = (opened, current, remaining_time)
         if key in cache:
             return cache[key]
-        # at each step we taka a decision: either we open a new value or we move
-        possible_scores: list[int] = [0]
-        can_open_current_value = current not in opened and graph.nodes[current] > 0
-        if can_open_current_value:
-            current_throughput = graph.nodes[current]
-            open_score = (
-                _dfs(
-                    opened=opened | {current},
-                    current=current,
-                    remaining_time=remaining_time - 1,
-                )
-                + (remaining_time - 1) * current_throughput
+        # determine which valves are left to be opened
+        possible_valves: list[PossibleValve] = []
+        for node in all_working_nodes - opened:
+            # cost is number of minutes of walking + one minute to open the valve
+            cost = distances[current][node] + 1
+            if cost >= remaining_time:
+                # do not analyse valves that cannot be reached
+                # or that are reached in the last minute
+                continue
+            # reward would be the throughput of the valve times the remaining time
+            reward = graph.nodes[node] * relu(remaining_time - cost)
+            possible_valves.append(PossibleValve(node, cost, reward))
+        # order the possible values by potential reward
+        # possible_valves.sort(key=lambda valve: valve.reward, reverse=True)
+        total_rewards = (
+            valve.reward
+            + _dfs(
+                opened=opened | {valve.node},
+                current=valve.node,
+                remaining_time=remaining_time - valve.cost,
             )
-            possible_scores.append(open_score)
-        possible_destinations = graph.edges[current]
-        for destination in possible_destinations:
-            move_score = _dfs(
-                opened=opened,
-                current=destination,
-                remaining_time=remaining_time - 1,
-            )
-            possible_scores.append(move_score)
-        best_score = cache[key] = max(possible_scores)
-        return best_score
+            for valve in possible_valves
+        )
+        best_reward = cache[key] = max(total_rewards, default=0)
+
+        return best_reward
 
     return _dfs(opened=frozenset(), current="AA", remaining_time=time)
 

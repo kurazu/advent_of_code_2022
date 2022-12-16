@@ -1,5 +1,8 @@
+import itertools as it
 import logging
 from pathlib import Path
+
+import tqdm
 
 from ..cli_utils import wrap_main
 from ..logs import setup_logging
@@ -8,7 +11,35 @@ from .task_1 import Graph, parse_graph
 logger = logging.getLogger(__name__)
 
 
+def calculate_distances(graph: Graph) -> dict[str, dict[str, int]]:
+    distances: dict[str, dict[str, int]] = {}
+
+    all_nodes = set(graph.nodes)
+
+    def _calculate_distances(node: str) -> dict[str, int]:
+        visited: set[str] = set()
+        costs: dict[str, int] = {node: 0}
+
+        while len(visited) != len(all_nodes):
+            lowest_unvisited_node = min(
+                it.filterfalse(visited.__contains__, costs), key=costs.get
+            )
+            unvisited_neighbours = set(graph.edges[lowest_unvisited_node]) - visited
+            for neighbour in unvisited_neighbours:
+                costs[neighbour] = costs[lowest_unvisited_node] + 1
+            visited.add(lowest_unvisited_node)
+
+        return costs
+
+    for node in tqdm.tqdm(all_nodes, desc="Calculating distances"):
+        distances[node] = _calculate_distances(node)
+    return distances
+
+
 def dfs(graph: Graph, *, time: int) -> int:
+    distances = calculate_distances(graph)
+    breakpoint()
+    return 0
     cache: dict[tuple[frozenset[str], str, str, bool, int], int] = {}
 
     def _dfs(
