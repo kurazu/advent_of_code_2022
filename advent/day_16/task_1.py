@@ -23,7 +23,8 @@ class Graph:
 # regexp patter to parse:
 # 'Valve FT has flow rate=6; tunnels lead to valves DW, BV, JA, FB, TV'
 pattern = re.compile(
-    r"^Valve (?P<name>\w+) has flow rate\=(?P<flow_rate>\d+)\; tunnels? leads? to valves? (?P<edges>\w+(, \w+)*)$"
+    r"^Valve (?P<name>\w+) has flow rate\=(?P<flow_rate>\d+)\; "
+    r"tunnels? leads? to valves? (?P<edges>\w+(, \w+)*)$"
 )
 
 
