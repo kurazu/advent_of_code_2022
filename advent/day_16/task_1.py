@@ -41,7 +41,7 @@ def parse_graph(filename: Path) -> Graph:
     return graph
 
 
-def dfs(graph: Graph, *, opened: set[str], current: str, remaining_time: int) -> int:
+def dfs(graph: Graph, *, time: int) -> int:
     cache: dict[tuple[frozenset[str], str, int], int] = {}
 
     def _dfs(*, opened: frozenset[str], current: str, remaining_time: int) -> int:
@@ -75,9 +75,7 @@ def dfs(graph: Graph, *, opened: set[str], current: str, remaining_time: int) ->
         best_score = cache[key] = max(possible_scores)
         return best_score
 
-    return _dfs(
-        opened=frozenset(opened), current=current, remaining_time=remaining_time
-    )
+    return _dfs(opened=frozenset(), current="AA", remaining_time=time)
 
 
 def visualize_graph(graph: Graph) -> None:
@@ -97,7 +95,7 @@ def visualize_graph(graph: Graph) -> None:
 def main(filename: Path) -> str:
     graph = parse_graph(filename)
     visualize_graph(graph)
-    best_score = dfs(graph, opened=set(), current="AA", remaining_time=30)
+    best_score = dfs(graph, time=30)
     return str(best_score)
 
 
