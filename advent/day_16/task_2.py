@@ -1,10 +1,15 @@
-import itertools as it
 import logging
 from pathlib import Path
 
 from ..cli_utils import wrap_main
 from ..logs import setup_logging
-from .task_1 import Graph, calculate_distances, get_possible_moves, parse_graph
+from .task_1 import (
+    Graph,
+    calculate_distances,
+    get_possible_moves,
+    parse_graph,
+    visualize_graph,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -91,7 +96,9 @@ def dfs(graph: Graph, *, time: int) -> int:
 @wrap_main
 def main(filename: Path) -> str:
     graph = parse_graph(filename)
+    visualize_graph(graph)
     best_score = dfs(graph, time=26)
+
     return str(best_score)
 
 
