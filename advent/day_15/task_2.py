@@ -147,31 +147,30 @@ def main(filename: Path, max_x: int, max_y: int) -> None:
 
     sensors_x = np.array([s.position.x for s in sensors], np.int32)
     sensors_y = np.array([s.position.y for s in sensors], np.int32)
-    sensors_r = np.array([s.r for s in sensors], np.int32)[:, np.newaxis]
+    sensors_r = np.array([s.r for s in sensors], np.int32)
 
-    beacon_positions = {sensor.beacon for sensor in sensors}
+    def find_intersecting_sector(*, x: int, y_dist: int) -> Sensor | None:
+        distances = np.abs(sensors_x - x) + y_dist
+        intersecting_mask = distances <= sensors_r
+        if np.any(intersecting_mask):
+            # return first sensor that intersects
+            return sensors[np.argmax(intersecting_mask)]
+        else:
+            return None
 
-    with mp.Pool(4) as pool:
-        points_matching: Iterable[Position] = filter(
-            None,
-            tqdm.tqdm(
-                pool.imap_unordered(
-                    partial(
-                        find_points,
-                        sensors_x,
-                        sensors_y,
-                        sensors_r,
-                        max_x,
-                    ),
-                    range(max_y + 1),
-                ),
-                total=max_y + 1,
-            ),
-        )
-        for point in points_matching:
-            logger.debug("Point %s can have a beacon", point)
-            click.echo(str(point.x * 4000000 + point.y))
-            return
+    for y in tqdm.trange(max_y + 1, desc="y"):
+        y_dist = np.abs(sensors_y - y)
+        x = 0
+        while x <= max_x + 1:
+            sector = find_intersecting_sector(x=x, y_dist=y_dist)
+            if sector is None:
+                logger.debug("Point %s can have a beacon", (x, y))
+                click.echo(str(x * 4000000 + y))
+                return
+            # find where the sector stops intersecting with
+            # current y and jump past that point
+            x = sector.position.x + sector.r - abs(sector.position.y - y) + 1
+    raise AssertionError("No non-intersecting point found!")
 
 
 if __name__ == "__main__":
