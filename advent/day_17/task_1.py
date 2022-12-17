@@ -43,12 +43,16 @@ def find_top_index(board: list[npt.NDArray[np.bool_]]) -> int:
     raise AssertionError()
 
 
-def visualize_board(board: list[npt.NDArray[np.bool_]]) -> None:
+def _visualize_board(board: list[npt.NDArray[np.bool_]]) -> str:
     buf = io.StringIO()
     for row in board[::-1]:
         buf.write("".join("#" if cell else "." for cell in row))
         buf.write("\n")
-    logger.debug("Board:\n%s", buf.getvalue())
+    return buf.getvalue()
+
+
+def visualize_board(board: list[npt.NDArray[np.bool_]]) -> None:
+    logger.debug("Board:\n%s", _visualize_board(board))
 
 
 def clashes(
@@ -131,16 +135,31 @@ def simulate_step(
 
 @wrap_main
 def main(filename: Path) -> str:
+    jet = get_jet(filename)
+    rocks = get_rocks()
+    steps = 2022
+    board = get_starting_board()
+    for _ in tqdm.trange(steps):
+        simulate_step(board, next(rocks), jet)
+    logger.info("Board after %s steps:\n%s", steps, _visualize_board(board))
+    return str(find_top_index(board))
+
+
+def get_starting_board() -> list[npt.NDArray[np.bool_]]:
+    board: list[npt.NDArray[np.bool_]] = [FLOOR]
+    return board
+
+
+def get_rocks() -> Iterator[npt.NDArray[np.bool_]]:
+    rocks = it.cycle(ROCKS)
+    return rocks
+
+
+def get_jet(filename: Path) -> Iterator[Direction]:
     (jet_pattern,) = get_stripped_lines(filename)
     directions = list(map(Direction, jet_pattern))
     jet = it.cycle(directions)
-    rocks = it.cycle(ROCKS)
-    steps = 2022
-    board: list[npt.NDArray[np.bool_]] = [FLOOR]
-    for _ in tqdm.trange(steps):
-        simulate_step(board, next(rocks), jet)
-
-    return str(find_top_index(board))
+    return jet
 
 
 if __name__ == "__main__":
