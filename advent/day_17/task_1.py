@@ -52,7 +52,8 @@ def _visualize_board(board: list[npt.NDArray[np.bool_]]) -> str:
 
 
 def visualize_board(board: list[npt.NDArray[np.bool_]]) -> None:
-    logger.debug("Board:\n%s", _visualize_board(board))
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug("Board:\n%s", _visualize_board(board))
 
 
 def clashes(
