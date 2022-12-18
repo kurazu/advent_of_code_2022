@@ -2,8 +2,11 @@ import enum
 import functools
 import io
 import logging
+import operator
+from collections import defaultdict, deque
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Sequence
 
 import tqdm
 
@@ -39,7 +42,7 @@ TUNNEL = int("100000001", 2)
 MASK = int("011111110", 2)
 
 
-def _visualize_board(board: list[int]) -> str:
+def _visualize_board(board: Sequence[int]) -> str:
     buf = io.StringIO()
     for row in board[::-1]:
         bits = bin(row)[2:].rjust(7, "0").replace("0", ".").replace("1", "#")
@@ -57,12 +60,44 @@ def move_rock(rock: tuple[int, ...], direction: Direction) -> tuple[int, ...]:
         return tuple(row >> 1 for row in rock)
 
 
+SignatureType = tuple[tuple[int, ...], int, int]
+
+
 @dataclass
 class Simulator:
     directions: list[Direction]
     board: list[int] = field(default_factory=lambda: [FLOOR], init=False)
     rock_idx: int = field(default=0, init=False)
     jet_idx: int = field(default=0, init=False)
+
+    def get_board_signature(self) -> tuple[int, ...]:
+        visited: dict[int, set[int]] = defaultdict(set)
+        to_visit: deque[tuple[int, int]] = deque()
+        to_visit.append((int("000010000", 2), len(self.board) - 1))
+        while to_visit:
+            mask, row = to_visit.popleft()
+            mask_left = mask << 1
+            if (
+                not (mask_left & self.board[row]) and mask_left not in visited[row]
+            ):  # free spot on the right
+                to_visit.append((mask_left, row))
+            mask_right = mask >> 1
+            if (
+                not (mask_right & self.board[row]) and mask_right not in visited[row]
+            ):  # free spot on the left
+                to_visit.append((mask_right, row))
+            if (
+                not (mask & self.board[row - 1]) and mask not in visited[row - 1]
+            ):  # free spot below
+                to_visit.append((mask, row - 1))
+            visited[row].add(mask)
+        return tuple(
+            functools.reduce(operator.or_, items)
+            for items in reversed(visited.values())
+        )
+
+    def get_signature(self) -> SignatureType:
+        return self.get_board_signature(), self.rock_idx, self.jet_idx
 
     def visualize_board(self) -> None:
         if logger.isEnabledFor(logging.DEBUG):
@@ -135,10 +170,20 @@ def main(filename: Path) -> str:
     directions = get_directions(filename)
     simulator = Simulator(directions)
     steps = 2022
-    for _ in tqdm.trange(steps):
+    cache: dict[SignatureType, int] = {}
+    for step in tqdm.trange(steps):
         simulator.simulate_step()
         simulator.visualize_board()
-    logger.info("Board after %s steps:\n%s", steps, _visualize_board(simulator.board))
+        signature = simulator.get_signature()
+        if signature in cache:
+            prev_step = cache[signature]
+            logger.info("Found cycle %d -> %d", prev_step, step)
+            # break
+        cache[signature] = step
+    logger.info(
+        "Board after %s steps:\n%s", steps, _visualize_board(simulator.board[-50:])
+    )
+    logger.info("Signature:\n%s", _visualize_board(simulator.get_board_signature()))
     return str(simulator.find_top_index())
 
 
