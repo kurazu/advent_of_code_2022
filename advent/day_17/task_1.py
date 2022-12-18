@@ -89,10 +89,12 @@ def move_rock(rock: list[int], direction: Direction) -> list[int]:
 
 def simulate_step(
     board: list[int],
-    rock: list[int],
-    jet: Iterator[Direction],
+    rock_idx: int,
+    directions: list[Direction],
+    jet: Iterator[int],
 ) -> None:
-    logger.debug("Simulating step of rock %s", rock)
+    logger.debug("Simulating step of rock %s", rock_idx)
+    rock = ROCKS[rock_idx]
     rock_height = len(rock)
     # spawn new rock
     current_top_idx = find_top_index(board)
@@ -110,7 +112,8 @@ def simulate_step(
     # visualize_board(board)
 
     while True:
-        direction = next(jet)
+        direction_idx = next(jet)
+        direction = directions[direction_idx]
         moved_rock = move_rock(rock, direction)
         if clashes(board, moved_rock, top):
             logger.debug("Jet stream cannot move rock")
@@ -130,12 +133,13 @@ def simulate_step(
 
 @wrap_main
 def main(filename: Path) -> str:
-    jet = get_jet(filename)
-    rocks = get_rocks()
+    directions = get_directions(filename)
+    jet = it.cycle(range(len(directions)))
+    rocks = it.cycle(range(len(ROCKS)))
     steps = 2022
     board = get_starting_board()
     for _ in tqdm.trange(steps):
-        simulate_step(board, next(rocks), jet)
+        simulate_step(board, next(rocks), directions, jet)
         visualize_board(board)
     logger.info("Board after %s steps:\n%s", steps, _visualize_board(board))
     return str(find_top_index(board))
@@ -145,16 +149,10 @@ def get_starting_board() -> list[int]:
     return [FLOOR]
 
 
-def get_rocks() -> Iterator[list[int]]:
-    rocks = it.cycle(ROCKS)
-    return rocks
-
-
-def get_jet(filename: Path) -> Iterator[Direction]:
+def get_directions(filename: Path) -> list[Direction]:
     (jet_pattern,) = get_stripped_lines(filename)
     directions = list(map(Direction, jet_pattern))
-    jet = it.cycle(directions)
-    return jet
+    return directions
 
 
 if __name__ == "__main__":

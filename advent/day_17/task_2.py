@@ -20,7 +20,7 @@ from .task_1 import (
 logger = logging.getLogger(__name__)
 
 
-def trim_board(board: list[npt.NDArray[np.bool_]]) -> int:
+def trim_board(board: list[int]) -> int:
     logger.debug("Trimming board")
     # try a background-filling algorithm at the top of the board
     # in order to verify how much of the board is still needed
@@ -65,8 +65,8 @@ def main(filename: Path) -> str:
     trimmed_lines = 0
     for step in tqdm.trange(steps):
         simulate_step(board, next(rocks), jet)
-        if step % trim_every == 0:
-            trimmed_lines += trim_board(board)
+        # if step % trim_every == 0:
+        #     trimmed_lines += trim_board(board)
     return str(find_top_index(board) + trimmed_lines)
 
 
