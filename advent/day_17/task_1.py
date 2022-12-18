@@ -194,15 +194,16 @@ class Simulator:
                     # current_board_state = _visualize_board(simulator.board)
                     # prev_board_state = board_at_step[prev_step]
                     # breakpoint()
-                    while step + cycle_length < steps:
-                        step += cycle_length
-                        pbar.update(cycle_length)
-                        extra_height += height_diff
-                        logger.info(
-                            "Skipping %d steps, adding %d height",
-                            cycle_length,
-                            height_diff,
-                        )
+                    repetitions = (steps - step) // cycle_length
+                    step += cycle_length * repetitions
+                    extra_height += height_diff * repetitions
+                    logger.info(
+                        "Skipping %d steps, adding %d height times %d",
+                        cycle_length,
+                        height_diff,
+                        repetitions,
+                    )
+
                     logger.info("Continuing simulation")
                     cache.clear()
                     continue
