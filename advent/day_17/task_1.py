@@ -173,6 +173,8 @@ class Simulator:
             while step < steps:
                 self.simulate_step()
                 self.visualize_board()
+                step += 1
+                pbar.update(1)
 
                 signature = self.get_signature()
                 current_height = self.find_top_index()
@@ -208,8 +210,6 @@ class Simulator:
                     # break
                 board_at_step[step] = _visualize_board(self.board)
                 cache[signature] = step, current_height
-                step += 1
-                pbar.update(1)
 
         return self.find_top_index() + extra_height
 
