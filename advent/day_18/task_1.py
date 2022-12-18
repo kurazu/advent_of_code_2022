@@ -23,17 +23,20 @@ def add_(
     return cast(tuple[int, int, int], tuple(x + dx for x, dx in zip(voxel, delta)))
 
 
+DS: list[tuple[int, int, int]] = [
+    (1, 0, 0),
+    (0, 1, 0),
+    (0, 0, 1),
+    (-1, 0, 0),
+    (0, -1, 0),
+    (0, 0, -1),
+]
+
+
 @wrap_main
 def main(filename: Path) -> str:
     voxels = set(read_voxels(filename))
-    DS: list[tuple[int, int, int]] = [
-        (1, 0, 0),
-        (0, 1, 0),
-        (0, 0, 1),
-        (-1, 0, 0),
-        (0, -1, 0),
-        (0, 0, -1),
-    ]
+
     surface = 0
     for voxel in voxels:
         neighbouring_voxels = map(lambda d: add_(voxel, d), DS)
