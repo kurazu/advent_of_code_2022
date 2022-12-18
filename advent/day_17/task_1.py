@@ -1,9 +1,9 @@
 import enum
+import functools
 import io
-import itertools as it
 import logging
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterator
 
 import tqdm
 
@@ -19,17 +19,17 @@ class Direction(str, enum.Enum):
 
 logger = logging.getLogger(__name__)
 
-ROCKS: list[list[int]] = [
-    [int("000111100", 2)],
-    [int("000010000", 2), int("000111000", 2), int("000010000", 2)],
-    [int("000001000", 2), int("000001000", 2), int("000111000", 2)],
-    [
+ROCKS: list[tuple[int, ...]] = [
+    (int("000111100", 2),),
+    (int("000010000", 2), int("000111000", 2), int("000010000", 2)),
+    (int("000001000", 2), int("000001000", 2), int("000111000", 2)),
+    (
         int("000100000", 2),
         int("000100000", 2),
         int("000100000", 2),
         int("000100000", 2),
-    ],
-    [int("000110000", 2), int("000110000", 2)],
+    ),
+    (int("000110000", 2), int("000110000", 2)),
 ]
 
 WIDTH = 7
@@ -37,15 +37,6 @@ FLOOR = int("111111111", 2)
 TUNNEL = int("100000001", 2)
 
 MASK = int("011111110", 2)
-
-
-def find_top_index(board: list[int]) -> int:
-    idx = len(board) - 1
-    for row in board[::-1]:
-        if row & MASK:
-            return idx
-        idx -= 1
-    raise AssertionError()
 
 
 def _visualize_board(board: list[int]) -> str:
@@ -57,96 +48,98 @@ def _visualize_board(board: list[int]) -> str:
     return buf.getvalue()
 
 
-def visualize_board(board: list[int]) -> None:
-    if logger.isEnabledFor(logging.DEBUG):
-        logger.debug("Board:\n%s", _visualize_board(board))
-
-
-def clashes(
-    board: list[int],
-    rock: list[int],
-    top: int,
-) -> bool:
-    for idx, row in enumerate(rock):
-        if board[top - idx] & row:
-            return True
-    return False
-
-
-def materialize_rock(board: list[int], rock: list[int], top: int) -> None:
-    for idx, row in enumerate(rock):
-        board[top - idx] |= row
-
-
-# TODO add cache
-def move_rock(rock: list[int], direction: Direction) -> list[int]:
+@functools.cache
+def move_rock(rock: tuple[int, ...], direction: Direction) -> tuple[int, ...]:
     if direction == Direction.LEFT:
-        return [row << 1 for row in rock]
+        return tuple(row << 1 for row in rock)
     else:
         assert direction == Direction.RIGHT
-        return [row >> 1 for row in rock]
+        return tuple(row >> 1 for row in rock)
 
 
-def simulate_step(
-    board: list[int],
-    rock_idx: int,
-    directions: list[Direction],
-    jet: Iterator[int],
-) -> None:
-    logger.debug("Simulating step of rock %s", rock_idx)
-    rock = ROCKS[rock_idx]
-    rock_height = len(rock)
-    # spawn new rock
-    current_top_idx = find_top_index(board)
-    logger.debug("Current top index: %s", current_top_idx)
-    bottom_spawn_idx = current_top_idx + 3
-    logger.debug("Bottom spawn index: %s", bottom_spawn_idx)
-    top_spawn_idx = bottom_spawn_idx + rock_height
-    logger.debug("Needed spawn top index: %s", top_spawn_idx)
-    # intitial spawn positions
-    top = top_spawn_idx
-    # expand board if neecessary
-    while len(board) <= top_spawn_idx:
-        logger.debug("Adding new row to board")
-        board.append(TUNNEL)
-    # visualize_board(board)
+@dataclass
+class Simulator:
+    directions: list[Direction]
+    board: list[int] = field(default_factory=lambda: [FLOOR], init=False)
+    rock_idx: int = field(default=0, init=False)
+    jet_idx: int = field(default=0, init=False)
 
-    while True:
-        direction_idx = next(jet)
-        direction = directions[direction_idx]
-        moved_rock = move_rock(rock, direction)
-        if clashes(board, moved_rock, top):
-            logger.debug("Jet stream cannot move rock")
-        else:
-            logger.debug("Jet stream moves rock %s", direction.name)
-            rock = moved_rock
+    def visualize_board(self) -> None:
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug("Board:\n%s", _visualize_board(self.board))
 
-        if clashes(board, rock, top - 1):
-            logger.debug("Rock cannot fall anymore")
-            break
-        else:
-            logger.debug("Rock falls")
-            top -= 1
+    def find_top_index(self) -> int:
+        idx = len(self.board) - 1
+        for row in self.board[::-1]:
+            if row & MASK:
+                return idx
+            idx -= 1
+        raise AssertionError()
 
-    materialize_rock(board, rock, top)
+    def clashes(
+        self,
+        rock: tuple[int, ...],
+        top: int,
+    ) -> bool:
+        for idx, row in enumerate(rock):
+            if self.board[top - idx] & row:
+                return True
+        return False
+
+    def materialize_rock(self, rock: tuple[int, ...], top: int) -> None:
+        for idx, row in enumerate(rock):
+            self.board[top - idx] |= row
+
+    def simulate_step(self) -> None:
+        logger.debug("Simulating step of rock %s", self.rock_idx)
+        rock = ROCKS[self.rock_idx]
+        rock_height = len(rock)
+        # spawn new rock
+        current_top_idx = self.find_top_index()
+        logger.debug("Current top index: %s", current_top_idx)
+        bottom_spawn_idx = current_top_idx + 3
+        logger.debug("Bottom spawn index: %s", bottom_spawn_idx)
+        top_spawn_idx = bottom_spawn_idx + rock_height
+        logger.debug("Needed spawn top index: %s", top_spawn_idx)
+        # intitial spawn positions
+        top = top_spawn_idx
+        # expand board if neecessary
+        while len(self.board) <= top_spawn_idx:
+            logger.debug("Adding new row to board")
+            self.board.append(TUNNEL)
+        # visualize_board(board)
+
+        while True:
+            direction = self.directions[self.jet_idx]
+            self.jet_idx = (self.jet_idx + 1) % len(self.directions)
+            moved_rock = move_rock(rock, direction)
+            if self.clashes(moved_rock, top):
+                logger.debug("Jet stream cannot move rock")
+            else:
+                logger.debug("Jet stream moves rock %s", direction.name)
+                rock = moved_rock
+
+            if self.clashes(rock, top - 1):
+                logger.debug("Rock cannot fall anymore")
+                break
+            else:
+                logger.debug("Rock falls")
+                top -= 1
+
+        self.materialize_rock(rock, top)
+        self.rock_idx = (self.rock_idx + 1) % len(ROCKS)
 
 
 @wrap_main
 def main(filename: Path) -> str:
     directions = get_directions(filename)
-    jet = it.cycle(range(len(directions)))
-    rocks = it.cycle(range(len(ROCKS)))
+    simulator = Simulator(directions)
     steps = 2022
-    board = get_starting_board()
     for _ in tqdm.trange(steps):
-        simulate_step(board, next(rocks), directions, jet)
-        visualize_board(board)
-    logger.info("Board after %s steps:\n%s", steps, _visualize_board(board))
-    return str(find_top_index(board))
-
-
-def get_starting_board() -> list[int]:
-    return [FLOOR]
+        simulator.simulate_step()
+        simulator.visualize_board()
+    logger.info("Board after %s steps:\n%s", steps, _visualize_board(simulator.board))
+    return str(simulator.find_top_index())
 
 
 def get_directions(filename: Path) -> list[Direction]:
