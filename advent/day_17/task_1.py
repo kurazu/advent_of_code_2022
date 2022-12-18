@@ -164,27 +164,66 @@ class Simulator:
         self.materialize_rock(rock, top)
         self.rock_idx = (self.rock_idx + 1) % len(ROCKS)
 
+    def simulate(self, steps: int) -> int:
+        cache: dict[SignatureType, tuple[int, int]] = {}
+        step = 0
+        extra_height = 0
+        board_at_step: dict[int, str] = {}
+        with tqdm.tqdm(total=steps) as pbar:
+            while step < steps:
+                self.simulate_step()
+                self.visualize_board()
+
+                signature = self.get_signature()
+                current_height = self.find_top_index()
+                if signature in cache:
+                    prev_step, prev_height = cache[signature]
+                    cycle_length = step - prev_step
+                    height_diff = current_height - prev_height
+                    logger.info(
+                        "Found cycle %d -> %d (length %d), height %d -> %d (diff %d)",
+                        prev_step,
+                        step,
+                        cycle_length,
+                        prev_height,
+                        current_height,
+                        height_diff,
+                    )
+                    # current_board_state = _visualize_board(simulator.board)
+                    # prev_board_state = board_at_step[prev_step]
+                    # breakpoint()
+                    while step + cycle_length < steps:
+                        step += cycle_length
+                        pbar.update(cycle_length)
+                        extra_height += height_diff
+                        logger.info(
+                            "Skipping %d steps, adding %d height",
+                            cycle_length,
+                            height_diff,
+                        )
+                    logger.info("Continuing simulation")
+                    cache.clear()
+                    continue
+
+                    # break
+                board_at_step[step] = _visualize_board(self.board)
+                cache[signature] = step, current_height
+                step += 1
+                pbar.update(1)
+
+        return self.find_top_index() + extra_height
+
 
 @wrap_main
 def main(filename: Path) -> str:
     directions = get_directions(filename)
     simulator = Simulator(directions)
     steps = 2022
-    cache: dict[SignatureType, int] = {}
-    for step in tqdm.trange(steps):
-        simulator.simulate_step()
-        simulator.visualize_board()
-        signature = simulator.get_signature()
-        if signature in cache:
-            prev_step = cache[signature]
-            logger.info("Found cycle %d -> %d", prev_step, step)
-            # break
-        cache[signature] = step
+    height = simulator.simulate(steps)
     logger.info(
         "Board after %s steps:\n%s", steps, _visualize_board(simulator.board[-50:])
     )
-    logger.info("Signature:\n%s", _visualize_board(simulator.get_board_signature()))
-    return str(simulator.find_top_index())
+    return str(height)
 
 
 def get_directions(filename: Path) -> list[Direction]:
