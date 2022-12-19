@@ -5,7 +5,7 @@ import re
 from copy import copy
 from dataclasses import dataclass
 from pathlib import Path
-from typing import NewType
+from typing import Iterable, NewType
 
 import tqdm
 from returns.curry import partial
@@ -82,6 +82,9 @@ class State:
 
     time_left: int = 24
 
+    def score(self) -> Geode:
+        return self.geode
+
 
 def collect_resources(state: State) -> None:
     state.ore = Ore(state.ore + state.ore_robots)
@@ -100,14 +103,7 @@ class CacheStats:
         return self.hits + self.misses
 
 
-def _score_blueprint(
-    cache: dict[State, State],
-    blueprint: BluePrint,
-    state: State,
-) -> State:
-    if state in cache:
-        return cache[state]
-
+def get_wait_state(state: State) -> State:
     next_state = copy(state)
 
     # robots are harvesting resources
@@ -116,17 +112,17 @@ def _score_blueprint(
     # time is running out
     next_state.time_left -= 1
 
-    if next_state.time_left == 0:
-        cache[state] = next_state
-        logger.debug("Reached possible end state with score %s", next_state.geode)
-        return next_state
+    return next_state
 
+
+def get_possible_next_states(
+    blueprint: BluePrint, *, state: State, wait_state: State
+) -> Iterable[State]:
     # We have the following possibilities (exclusive):
-    possibilities: list[State] = []
     # build a geode robot
     geode_cost_ore, geode_cost_obsidian = blueprint.geode_robot_cost
     if state.ore >= geode_cost_ore and state.obsidian >= geode_cost_obsidian:
-        build_geode_robot_possibility = copy(next_state)
+        build_geode_robot_possibility = copy(wait_state)
         build_geode_robot_possibility.ore = Ore(
             build_geode_robot_possibility.ore - geode_cost_ore
         )
@@ -134,12 +130,16 @@ def _score_blueprint(
             build_geode_robot_possibility.obsidian - geode_cost_obsidian
         )
         build_geode_robot_possibility.geode_robots += 1
-        # return _score_blueprint(cache, blueprint, build_geode_robot_possibility)
-        possibilities.append(build_geode_robot_possibility)
+        yield build_geode_robot_possibility
+        # if we can build a geode robot, we don't need to consider
+        # any other possibilities, because adding a geode robot adds geode resource
+        # and directly increases the score
+        return
+
     # build an obsidian robot
     obsidian_cost_ore, obsidian_cost_clay = blueprint.obsidian_robot_cost
     if state.ore >= obsidian_cost_ore and state.clay >= obsidian_cost_clay:
-        build_obsidian_robot_possibility = copy(next_state)
+        build_obsidian_robot_possibility = copy(wait_state)
         build_obsidian_robot_possibility.ore = Ore(
             build_obsidian_robot_possibility.ore - obsidian_cost_ore
         )
@@ -147,47 +147,70 @@ def _score_blueprint(
             build_obsidian_robot_possibility.clay - obsidian_cost_clay
         )
         build_obsidian_robot_possibility.obsidian_robots += 1
-        possibilities.append(build_obsidian_robot_possibility)
-        # return _score_blueprint(cache, blueprint, build_obsidian_robot_possibility)
+        yield build_obsidian_robot_possibility
+
     # build a clay robot
     if state.clay >= blueprint.clay_robot_cost:
-        build_clay_robot_possibility = copy(next_state)
+        build_clay_robot_possibility = copy(wait_state)
         build_clay_robot_possibility.clay = Clay(
             build_clay_robot_possibility.clay - blueprint.clay_robot_cost
         )
         build_clay_robot_possibility.clay_robots += 1
-        possibilities.append(build_clay_robot_possibility)
-        # return _score_blueprint(cache, blueprint, build_clay_robot_possibility)
+        yield build_clay_robot_possibility
+
     # build an ore robot
     if state.ore >= blueprint.ore_robot_cost:
-        build_ore_robot_possibility = copy(next_state)
+        build_ore_robot_possibility = copy(wait_state)
         build_ore_robot_possibility.ore = Ore(
             build_ore_robot_possibility.ore - blueprint.ore_robot_cost
         )
         build_ore_robot_possibility.ore_robots += 1
-        possibilities.append(build_ore_robot_possibility)
-        # return _score_blueprint(cache, blueprint, build_ore_robot_possibility)
+        yield build_ore_robot_possibility
 
-    # return _score_blueprint(cache, blueprint, next_state)
-    # wait
-    possibilities.append(next_state)
+    # wait and construct no robots
+    yield wait_state
+
+
+def _score_blueprint(
+    cache: dict[State, State],
+    blueprint: BluePrint,
+    state: State,
+) -> State:
+    if state in cache:
+        return cache[state]
+
+    wait_state = get_wait_state(state)
+
+    if wait_state.time_left == 0:
+        # This is the final state - no point in constructing any more robots
+        cache[state] = wait_state
+        logger.debug("Reached possible end state with score %s", wait_state.geode)
+        return wait_state
+
+    possibilities = get_possible_next_states(
+        blueprint, state=state, wait_state=wait_state
+    )
 
     best_state = cache[state] = max(
-        map(partial(_score_blueprint, cache, blueprint), possibilities),
-        key=lambda s: s.geode,
+        map(
+            partial(_score_blueprint, cache, blueprint),
+            possibilities,
+        ),
+        key=State.score,
     )
     return best_state
 
 
 def score_blueprint(blueprint: BluePrint) -> Geode:
-    cache: dict[State, Geode] = {}
+    cache: dict[State, State] = {}
     state = State()
     state.clay = Clay(state.clay + blueprint.clay_robot_cost)
     state.time_left -= blueprint.clay_robot_cost
 
     best_state = _score_blueprint(cache, blueprint, state)
-    best_score = best_state.geode
-    logger.info("Blueprint scored %d with %s", best_score, best_state)
+    best_score = best_state.score()
+    logger.info("Blueprint scored %d with states %s", best_score, best_state)
+
     return best_score
 
 
