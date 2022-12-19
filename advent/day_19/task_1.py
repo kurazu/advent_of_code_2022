@@ -1,3 +1,4 @@
+import functools
 import logging
 import math
 import multiprocessing as mp
@@ -84,6 +85,11 @@ class State:
 
     def score(self) -> Geode:
         return self.geode
+
+
+@dataclass
+class GlobalState:
+    best_score: Geode = Geode(-1)
 
 
 def state_after_waiting(state: State, turns_to_wait: int) -> State:
@@ -203,23 +209,46 @@ def _get_possible_next_states(blueprint: BluePrint, *, state: State) -> Iterable
     yield from _get_ore_robot_possibility(blueprint, state)
 
 
+@functools.cache
+def _get_max_score(geode: Geode, geode_robots: int, time_left: int) -> Geode:
+    score = geode
+    for _ in range(time_left):
+        # for the best possible scenario, assume that there will be a new geode robot
+        # constructed each turn
+        score = Geode(score + geode_robots)
+        geode_robots += 1
+    return score
+
+
+def get_max_score(state: State) -> Geode:
+    return _get_max_score(state.geode, state.geode_robots, state.time_left)
+
+
 def _score_blueprint(
     cache: dict[State, State],
+    global_state: GlobalState,
     blueprint: BluePrint,
     state: State,
 ) -> State:
     if state in cache:
         return cache[state]
 
-    possibilities = list(_get_possible_next_states(blueprint, state=state))
+    possibilities = _get_possible_next_states(blueprint, state=state)
+    possibilities = filter(
+        lambda p: get_max_score(p) > global_state.best_score, possibilities
+    )
+
+    possibilities = list(possibilities)
     if not possibilities:
         # if we cannot construct any more robots, the only things we can do is wait
         wait_state = cache[state] = state_after_waiting(state, state.time_left)
+        if wait_state.geode > global_state.best_score:
+            global_state.best_score = wait_state.geode
         return wait_state
 
     best_state = cache[state] = max(
         map(
-            partial(_score_blueprint, cache, blueprint),
+            partial(_score_blueprint, cache, global_state, blueprint),
             possibilities,
         ),
         key=State.score,
@@ -229,9 +258,10 @@ def _score_blueprint(
 
 def score_blueprint(blueprint: BluePrint, time_left: int) -> int:
     cache: dict[State, State] = {}
+    global_state = GlobalState()
     state = State(time_left=time_left)
 
-    best_state = _score_blueprint(cache, blueprint, state)
+    best_state = _score_blueprint(cache, global_state, blueprint, state)
     best_score = best_state.score()
     logger.info(
         "Blueprint %d scored %d with states %s", blueprint.id, best_score, best_state
