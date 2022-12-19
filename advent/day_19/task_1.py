@@ -1,6 +1,5 @@
-import itertools as it
 import logging
-import operator
+import multiprocessing as mp
 import re
 from copy import copy
 from dataclasses import dataclass
@@ -26,6 +25,7 @@ Geode = NewType("Geode", int)
 
 @dataclass
 class BluePrint:
+    id: BluePrintId
     ore_robot_cost: Ore
     clay_robot_cost: Ore
     obsidian_robot_cost: tuple[Ore, Clay]
@@ -43,8 +43,7 @@ pattern = re.compile(
 )
 
 
-def parse_blueprints(filename: Path) -> dict[BluePrintId, BluePrint]:
-    blueprints: dict[BluePrintId, BluePrint] = {}
+def parse_blueprints(filename: Path) -> Iterable[BluePrint]:
     for line in get_stripped_lines(filename):
         match = pattern.match(line)
         assert match is not None
@@ -59,13 +58,13 @@ def parse_blueprints(filename: Path) -> dict[BluePrintId, BluePrint]:
             Ore(int(match.group("geode_robot_cost_ore"))),
             Obsidian(int(match.group("geode_robot_cost_obsidian"))),
         )
-        blueprints[blueprint_id] = BluePrint(
+        yield BluePrint(
+            id=blueprint_id,
             ore_robot_cost=ore_robot_cost,
             clay_robot_cost=clay_robot_cost,
             obsidian_robot_cost=obsidian_robot_cost,
             geode_robot_cost=geode_robot_cost,
         )
-    return blueprints
 
 
 @dataclass(unsafe_hash=True)
@@ -150,10 +149,10 @@ def get_possible_next_states(
         yield build_obsidian_robot_possibility
 
     # build a clay robot
-    if state.clay >= blueprint.clay_robot_cost:
+    if state.ore >= blueprint.clay_robot_cost:
         build_clay_robot_possibility = copy(wait_state)
-        build_clay_robot_possibility.clay = Clay(
-            build_clay_robot_possibility.clay - blueprint.clay_robot_cost
+        build_clay_robot_possibility.ore = Ore(
+            build_clay_robot_possibility.ore - blueprint.clay_robot_cost
         )
         build_clay_robot_possibility.clay_robots += 1
         yield build_clay_robot_possibility
@@ -174,6 +173,7 @@ def get_possible_next_states(
 def _score_blueprint(
     cache: dict[State, State],
     blueprint: BluePrint,
+    depth: int,
     state: State,
 ) -> State:
     if state in cache:
@@ -191,9 +191,13 @@ def _score_blueprint(
         blueprint, state=state, wait_state=wait_state
     )
 
+    # if depth < 12:
+    #     possibilities = list(possibilities)
+    #     possibilities = tqdm.tqdm(possibilities, desc=f"Depth {depth}")
+
     best_state = cache[state] = max(
         map(
-            partial(_score_blueprint, cache, blueprint),
+            partial(_score_blueprint, cache, blueprint, depth + 1),
             possibilities,
         ),
         key=State.score,
@@ -201,31 +205,49 @@ def _score_blueprint(
     return best_state
 
 
-def score_blueprint(blueprint: BluePrint) -> Geode:
+def score_blueprint(blueprint: BluePrint) -> int:
     cache: dict[State, State] = {}
     state = State()
-    state.clay = Clay(state.clay + blueprint.clay_robot_cost)
-    state.time_left -= blueprint.clay_robot_cost
 
-    best_state = _score_blueprint(cache, blueprint, state)
+    best_state = _score_blueprint(cache, blueprint, 0, state)
     best_score = best_state.score()
-    logger.info("Blueprint scored %d with states %s", best_score, best_state)
+    logger.info(
+        "Blueprint %d scored %d with states %s", blueprint.id, best_score, best_state
+    )
 
-    return best_score
+    # logger.info("Starting explanation")
+    # logger.info("Initial state: %s", state)
+    # breakpoint()
+    # # start explanations
+    # while state.time_left > 0:
+    #     logger.info("State: %s", state)
+    #     wait_state = get_wait_state(state)
+    #     possibilities = get_possible_next_states(
+    #         blueprint, state=state, wait_state=wait_state
+    #     )
+    #     best_possibility = max(
+    #         possibilities, key=lambda possibility: cache[possibility].score()
+    #     )
+    #     logger.info(
+    #         "From state %s we select best possibility %s", state, best_possibility
+    #     )
+    #     state = best_possibility
+
+    # breakpoint()
+    return best_score * blueprint.id
 
 
 @wrap_main
 def main(filename: Path) -> str:
-    blueprints = parse_blueprints(filename)
-    scores: dict[BluePrintId, Geode] = {
-        blueprint_id: score_blueprint(blueprint)
-        for blueprint_id, blueprint in tqdm.tqdm(blueprints.items(), desc="Blueprints")
-    }
-    levels = it.starmap(operator.mul, scores.items())
-    total = sum(levels)
+    blueprints = list(parse_blueprints(filename))
+    with mp.Pool(4) as pool:
+        scores = tqdm.tqdm(
+            pool.imap(score_blueprint, blueprints, chunksize=1), total=len(blueprints)
+        )
+        total = sum(scores)
     return str(total)
 
 
 if __name__ == "__main__":
-    setup_logging(logging.INFO)
+    setup_logging(logging.WARNING)
     main()
