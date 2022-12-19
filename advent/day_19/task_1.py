@@ -1,4 +1,5 @@
 import logging
+import math
 import multiprocessing as mp
 import re
 from copy import copy
@@ -85,109 +86,140 @@ class State:
         return self.geode
 
 
-def collect_resources(state: State) -> None:
-    state.ore = Ore(state.ore + state.ore_robots)
-    state.clay = Clay(state.clay + state.clay_robots)
-    state.obsidian = Obsidian(state.obsidian + state.obsidian_robots)
-    state.geode = Geode(state.geode + state.geode_robots)
-
-
-def get_wait_state(state: State) -> State:
+def state_after_waiting(state: State, turns_to_wait: int) -> State:
     next_state = copy(state)
-
-    # robots are harvesting resources
-    collect_resources(next_state)
-
-    # time is running out
-    next_state.time_left -= 1
-
+    next_state.time_left -= turns_to_wait
+    next_state.ore = Ore(next_state.ore + next_state.ore_robots * turns_to_wait)
+    next_state.clay = Clay(next_state.clay + next_state.clay_robots * turns_to_wait)
+    next_state.obsidian = Obsidian(
+        next_state.obsidian + next_state.obsidian_robots * turns_to_wait
+    )
+    next_state.geode = Geode(next_state.geode + next_state.geode_robots * turns_to_wait)
     return next_state
 
 
-def get_possible_next_states(
-    blueprint: BluePrint, *, state: State, wait_state: State
-) -> Iterable[State]:
-    # We have the following possibilities (exclusive):
-    # build a geode robot
-    geode_cost_ore, geode_cost_obsidian = blueprint.geode_robot_cost
-    if state.ore >= geode_cost_ore and state.obsidian >= geode_cost_obsidian:
-        build_geode_robot_possibility = copy(wait_state)
-        build_geode_robot_possibility.ore = Ore(
-            build_geode_robot_possibility.ore - geode_cost_ore
-        )
-        build_geode_robot_possibility.obsidian = Obsidian(
-            build_geode_robot_possibility.obsidian - geode_cost_obsidian
-        )
-        build_geode_robot_possibility.geode_robots += 1
-        yield build_geode_robot_possibility
-        # if we can build a geode robot, we don't need to consider
-        # any other possibilities, because adding a geode robot adds geode resource
-        # and directly increases the score
+def relu(x: int) -> int:
+    return max(0, x)
+
+
+def _get_ore_robot_possibility(blueprint: BluePrint, state: State) -> Iterable[State]:
+    missing_ore = blueprint.ore_robot_cost - state.ore
+    turns_to_wait = math.ceil(relu(missing_ore) / state.ore_robots) + 1
+    if turns_to_wait >= state.time_left:
+        # no point in making this robot, we won't have enought time to use it
         return
 
-    # build an obsidian robot
-    obsidian_cost_ore, obsidian_cost_clay = blueprint.obsidian_robot_cost
-    if state.ore >= obsidian_cost_ore and state.clay >= obsidian_cost_clay:
-        build_obsidian_robot_possibility = copy(wait_state)
-        build_obsidian_robot_possibility.ore = Ore(
-            build_obsidian_robot_possibility.ore - obsidian_cost_ore
-        )
-        build_obsidian_robot_possibility.clay = Clay(
-            build_obsidian_robot_possibility.clay - obsidian_cost_clay
-        )
-        build_obsidian_robot_possibility.obsidian_robots += 1
-        yield build_obsidian_robot_possibility
+    ore_robot_possibility = state_after_waiting(state, turns_to_wait)
+    ore_robot_possibility.ore_robots += 1
+    ore_robot_possibility.ore = Ore(
+        ore_robot_possibility.ore - blueprint.ore_robot_cost
+    )
+    yield ore_robot_possibility
 
-    # build a clay robot
-    if state.ore >= blueprint.clay_robot_cost:
-        build_clay_robot_possibility = copy(wait_state)
-        build_clay_robot_possibility.ore = Ore(
-            build_clay_robot_possibility.ore - blueprint.clay_robot_cost
-        )
-        build_clay_robot_possibility.clay_robots += 1
-        yield build_clay_robot_possibility
 
-    # build an ore robot
-    if state.ore >= blueprint.ore_robot_cost:
-        build_ore_robot_possibility = copy(wait_state)
-        build_ore_robot_possibility.ore = Ore(
-            build_ore_robot_possibility.ore - blueprint.ore_robot_cost
-        )
-        build_ore_robot_possibility.ore_robots += 1
-        yield build_ore_robot_possibility
+def _get_clay_robot_possibility(blueprint: BluePrint, state: State) -> Iterable[State]:
+    missing_ore = relu(blueprint.clay_robot_cost - state.ore)
+    turns_to_wait = math.ceil(missing_ore / state.ore_robots) + 1
+    if turns_to_wait >= state.time_left:
+        # no point in making this robot, we won't have enought time to use it
+        return
 
-    # wait and construct no robots
-    yield wait_state
+    clay_robot_possibility = state_after_waiting(state, turns_to_wait)
+    clay_robot_possibility.clay_robots += 1
+    clay_robot_possibility.ore = Ore(
+        clay_robot_possibility.ore - blueprint.clay_robot_cost
+    )
+    yield clay_robot_possibility
+
+
+def _get_obsidian_robot_possibility(
+    blueprint: BluePrint, state: State
+) -> Iterable[State]:
+    if not state.clay_robots:
+        return  # we cannot make obsidian robots without clay robots
+
+    robot_cost_ore, robot_cost_clay = blueprint.obsidian_robot_cost
+
+    missing_ore = relu(robot_cost_ore - state.ore)
+    turns_to_wait_for_ore = math.ceil(missing_ore / state.ore_robots)
+
+    missing_clay = relu(robot_cost_clay - state.clay)
+    turns_to_wait_for_clay = math.ceil(missing_clay / state.clay_robots)
+
+    turns_to_wait = max(turns_to_wait_for_ore, turns_to_wait_for_clay) + 1
+    if turns_to_wait >= state.time_left:
+        # no point in making this robot, we won't have enought time to use it
+        return
+
+    obsidian_robot_possibility = state_after_waiting(state, turns_to_wait)
+    obsidian_robot_possibility.obsidian_robots += 1
+    obsidian_robot_possibility.ore = Ore(
+        obsidian_robot_possibility.ore - robot_cost_ore
+    )
+    obsidian_robot_possibility.clay = Clay(
+        obsidian_robot_possibility.clay - robot_cost_clay
+    )
+    yield obsidian_robot_possibility
+
+
+def _get_geode_robot_possibility(blueprint: BluePrint, state: State) -> Iterable[State]:
+    if not state.obsidian_robots:
+        return  # we cannot make geode robots without obsidian robots
+
+    robot_cost_ore, robot_cost_obsidian = blueprint.geode_robot_cost
+
+    missing_ore = relu(robot_cost_ore - state.ore)
+    turns_to_wait_for_ore = math.ceil(missing_ore / state.ore_robots)
+
+    missing_obsidian = relu(robot_cost_obsidian - state.obsidian)
+    turns_to_wait_for_obsidian = math.ceil(missing_obsidian / state.obsidian_robots)
+
+    turns_to_wait = max(turns_to_wait_for_ore, turns_to_wait_for_obsidian) + 1
+    if turns_to_wait >= state.time_left:
+        # no point in making this robot, we won't have enought time to use it
+        return
+
+    geode_robot_possibility = state_after_waiting(state, turns_to_wait)
+    geode_robot_possibility.geode_robots += 1
+    geode_robot_possibility.ore = Ore(geode_robot_possibility.ore - robot_cost_ore)
+    geode_robot_possibility.obsidian = Obsidian(
+        geode_robot_possibility.obsidian - robot_cost_obsidian
+    )
+    yield geode_robot_possibility
+
+
+def _get_possible_next_states(blueprint: BluePrint, *, state: State) -> Iterable[State]:
+    # We are choosing between 4 actions:
+    # 1. accumulate resources and build a geode robot
+    # 2. accumulate resources and build an obsidian robot
+    # 3. accumulate resources and build a clay robot
+    # 4. accumulate resources and build an ore robot
+    # Because of the accumulation of resources, different actions can push the time
+    # to different points in the future.
+
+    yield from _get_geode_robot_possibility(blueprint, state)
+    yield from _get_obsidian_robot_possibility(blueprint, state)
+    yield from _get_clay_robot_possibility(blueprint, state)
+    yield from _get_ore_robot_possibility(blueprint, state)
 
 
 def _score_blueprint(
     cache: dict[State, State],
     blueprint: BluePrint,
-    depth: int,
     state: State,
 ) -> State:
     if state in cache:
         return cache[state]
 
-    wait_state = get_wait_state(state)
-
-    if wait_state.time_left == 0:
-        # This is the final state - no point in constructing any more robots
-        cache[state] = wait_state
-        logger.debug("Reached possible end state with score %s", wait_state.geode)
+    possibilities = list(_get_possible_next_states(blueprint, state=state))
+    if not possibilities:
+        # if we cannot construct any more robots, the only things we can do is wait
+        wait_state = cache[state] = state_after_waiting(state, state.time_left)
         return wait_state
-
-    possibilities = get_possible_next_states(
-        blueprint, state=state, wait_state=wait_state
-    )
-
-    # if depth < 12:
-    #     possibilities = list(possibilities)
-    #     possibilities = tqdm.tqdm(possibilities, desc=f"Depth {depth}")
 
     best_state = cache[state] = max(
         map(
-            partial(_score_blueprint, cache, blueprint, depth + 1),
+            partial(_score_blueprint, cache, blueprint),
             possibilities,
         ),
         key=State.score,
@@ -199,7 +231,7 @@ def score_blueprint(blueprint: BluePrint, time_left: int) -> int:
     cache: dict[State, State] = {}
     state = State(time_left=time_left)
 
-    best_state = _score_blueprint(cache, blueprint, 0, state)
+    best_state = _score_blueprint(cache, blueprint, state)
     best_score = best_state.score()
     logger.info(
         "Blueprint %d scored %d with states %s", blueprint.id, best_score, best_state
