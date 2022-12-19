@@ -69,6 +69,8 @@ def parse_blueprints(filename: Path) -> Iterable[BluePrint]:
 
 @dataclass(unsafe_hash=True)
 class State:
+    time_left: int
+
     ore: Ore = Ore(0)
     clay: Clay = Clay(0)
     obsidian: Obsidian = Obsidian(0)
@@ -79,8 +81,6 @@ class State:
     obsidian_robots: int = 0
     geode_robots: int = 0
 
-    time_left: int = 24
-
     def score(self) -> Geode:
         return self.geode
 
@@ -90,16 +90,6 @@ def collect_resources(state: State) -> None:
     state.clay = Clay(state.clay + state.clay_robots)
     state.obsidian = Obsidian(state.obsidian + state.obsidian_robots)
     state.geode = Geode(state.geode + state.geode_robots)
-
-
-@dataclass
-class CacheStats:
-    hits: int = 0
-    misses: int = 0
-
-    @property
-    def total(self) -> int:
-        return self.hits + self.misses
 
 
 def get_wait_state(state: State) -> State:
@@ -205,9 +195,9 @@ def _score_blueprint(
     return best_state
 
 
-def score_blueprint(blueprint: BluePrint) -> int:
+def score_blueprint(blueprint: BluePrint, time_left: int) -> int:
     cache: dict[State, State] = {}
-    state = State()
+    state = State(time_left=time_left)
 
     best_state = _score_blueprint(cache, blueprint, 0, state)
     best_score = best_state.score()
@@ -234,6 +224,11 @@ def score_blueprint(blueprint: BluePrint) -> int:
     #     state = best_possibility
 
     # breakpoint()
+    return best_score
+
+
+def score_and_multiply(blueprint: BluePrint) -> int:
+    best_score = score_blueprint(blueprint, time_left=24)
     return best_score * blueprint.id
 
 
@@ -242,7 +237,8 @@ def main(filename: Path) -> str:
     blueprints = list(parse_blueprints(filename))
     with mp.Pool(4) as pool:
         scores = tqdm.tqdm(
-            pool.imap(score_blueprint, blueprints, chunksize=1), total=len(blueprints)
+            pool.imap(score_and_multiply, blueprints, chunksize=1),
+            total=len(blueprints),
         )
         total = sum(scores)
     return str(total)
