@@ -73,9 +73,14 @@ def insert_in_between(prev_node: Node, next_node: Node, node: Node) -> None:
     node.next = next_node
 
 
-def move_right(node: Node, steps: int) -> None:
+def move_right(node: Node, steps: int, total_nodes: int) -> None:
     """Move the node right by the given number of steps."""
     assert steps > 0
+
+    laps = steps // total_nodes
+    steps = (steps % total_nodes) + laps
+    assert steps > 0
+
     prev_node, next_node = cut_node(node)
 
     for _ in range(steps):
@@ -85,9 +90,14 @@ def move_right(node: Node, steps: int) -> None:
     insert_in_between(prev_node=prev_node, next_node=next_node, node=node)
 
 
-def move_left(node: Node, steps: int) -> None:
+def move_left(node: Node, steps: int, total_nodes: int) -> None:
     """Move the node left by the given number of steps."""
     assert steps > 0
+
+    laps = steps // total_nodes
+    steps = (steps % total_nodes) + laps
+    assert steps > 0
+
     prev_node, next_node = cut_node(node)
 
     for _ in range(steps):
@@ -102,15 +112,16 @@ def read_numbers(filename: Path) -> Iterable[int]:
 
 
 def mix(nodes_in_order: list[Node]) -> None:
+    total_nodes = len(nodes_in_order)
     for node in nodes_in_order:
         logger.debug("Before mixing %r", node)
         offset = node.value
-        if offset == 0:
+        if offset % total_nodes == 0:
             continue
         elif offset > 0:
-            move_right(node, offset)
+            move_right(node, offset, total_nodes)
         else:
-            move_left(node, -offset)
+            move_left(node, -offset, total_nodes)
         logger.debug("After mixing %r", node)
 
 
