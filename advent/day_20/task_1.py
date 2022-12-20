@@ -73,13 +73,20 @@ def insert_in_between(prev_node: Node, next_node: Node, node: Node) -> None:
     node.next = next_node
 
 
+def get_wrapped_steps(steps: int, total_nodes: int) -> int:
+    assert steps > 0
+    while steps >= total_nodes:
+        laps = steps // total_nodes
+        steps = (steps % total_nodes) + laps
+    return steps
+
+
 def move_right(node: Node, steps: int, total_nodes: int) -> None:
     """Move the node right by the given number of steps."""
     assert steps > 0
 
-    laps = steps // total_nodes
-    steps = (steps % total_nodes) + laps
-    assert steps > 0
+    steps = get_wrapped_steps(steps, total_nodes)
+    assert 0 <= steps < total_nodes, steps
 
     prev_node, next_node = cut_node(node)
 
@@ -94,9 +101,8 @@ def move_left(node: Node, steps: int, total_nodes: int) -> None:
     """Move the node left by the given number of steps."""
     assert steps > 0
 
-    laps = steps // total_nodes
-    steps = (steps % total_nodes) + laps
-    assert steps > 0
+    steps = get_wrapped_steps(steps, total_nodes)
+    assert 0 <= steps < total_nodes, steps
 
     prev_node, next_node = cut_node(node)
 
@@ -164,11 +170,11 @@ def main(filename: Path) -> str:
     logger.debug("Zero node: %r", zero_node)
 
     node1000 = fast_forward(zero_node, 1000)
-    logger.debug("Node after 1000 steps: %d", node1000.value)
+    logger.info("Node after 1000 steps: %d", node1000.value)
     node2000 = fast_forward(node1000, 1000)
-    logger.debug("Node after 2000 steps: %d", node2000.value)
+    logger.info("Node after 2000 steps: %d", node2000.value)
     node3000 = fast_forward(node2000, 1000)
-    logger.debug("Node after 3000 steps: %d", node3000.value)
+    logger.info("Node after 3000 steps: %d", node3000.value)
     total = node1000.value + node2000.value + node3000.value
     return str(total)
 
