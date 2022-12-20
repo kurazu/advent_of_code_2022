@@ -1,13 +1,10 @@
 from __future__ import annotations
 
 import io
-import itertools as it
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable, TypeVar
-
-import more_itertools as mit
 
 from ..cli_utils import wrap_main
 from ..io_utils import get_stripped_lines
