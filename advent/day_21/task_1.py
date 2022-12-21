@@ -1,4 +1,3 @@
-import abc
 import graphlib
 import logging
 import operator
@@ -6,7 +5,7 @@ import re
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, ClassVar, NewType, Protocol
+from typing import Callable, NewType, Protocol
 
 from ..cli_utils import wrap_main
 from ..io_utils import get_stripped_lines
