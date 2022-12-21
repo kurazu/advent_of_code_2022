@@ -36,11 +36,15 @@ class SimpleMonkey:
         return self.result
 
 
+InverseOperatorType = Callable[[int, int | None, int | None], int]
+
+
 @dataclass
 class OperationMonkey:
     left: MonkeyId
     right: MonkeyId
     operator: Callable[[int, int], int]
+    inverse_operator: InverseOperatorType
 
     @property
     def dependencies(self) -> frozenset[MonkeyId]:
@@ -66,6 +70,46 @@ SYMBOL_TO_OPERATOR: dict[str, Callable[[int, int], int]] = {
 }
 
 
+def inverse_plus(result: int, left: int | None, right: int | None) -> int:
+    if right is None:
+        assert left is not None
+        return result - left
+    else:
+        return result - right
+
+
+def inverse_minus(result: int, left: int | None, right: int | None) -> int:
+    if right is None:
+        assert left is not None
+        return left - result
+    else:
+        return result + right
+
+
+def inverse_mul(result: int, left: int | None, right: int | None) -> int:
+    if right is None:
+        assert left is not None
+        return result // left
+    else:
+        return result // right
+
+
+def inverse_div(result: int, left: int | None, right: int | None) -> int:
+    if right is None:
+        assert left is not None
+        return left // result
+    else:
+        return result * right
+
+
+SYMBOL_TO_INVERSE_OPERATOR: dict[str, InverseOperatorType] = {
+    "+": inverse_plus,
+    "-": inverse_minus,
+    "*": inverse_mul,
+    "/": inverse_div,
+}
+
+
 def parse_monkeys(filename: Path) -> dict[MonkeyId, Monkey]:
     monkeys = {}
     for line in get_stripped_lines(filename):
@@ -80,7 +124,13 @@ def parse_monkeys(filename: Path) -> dict[MonkeyId, Monkey]:
             left = MonkeyId(match.group("left"))
             right = MonkeyId(match.group("right"))
             operator = SYMBOL_TO_OPERATOR[match.group("operator")]
-            monkey = OperationMonkey(left=left, right=right, operator=operator)
+            inverse_operator = SYMBOL_TO_INVERSE_OPERATOR[match.group("operator")]
+            monkey = OperationMonkey(
+                left=left,
+                right=right,
+                operator=operator,
+                inverse_operator=inverse_operator,
+            )
         monkeys[monkey_id] = monkey
     return monkeys
 
