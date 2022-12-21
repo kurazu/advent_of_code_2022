@@ -4,7 +4,7 @@ import logging
 import operator
 import re
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, ClassVar, NewType, Protocol
 
@@ -17,7 +17,9 @@ MonkeyId = NewType("MonkeyId", str)
 
 
 class Monkey(Protocol):
-    dependencies: frozenset[MonkeyId]
+    @property
+    def dependencies(self) -> frozenset[MonkeyId]:
+        ...
 
     def __call__(self, previous_results: dict[MonkeyId, int]) -> int:
         ...
@@ -28,8 +30,8 @@ EMPTY: frozenset[MonkeyId] = frozenset()
 
 @dataclass
 class SimpleMonkey:
-    dependencies: ClassVar[frozenset[MonkeyId]] = EMPTY
     result: int
+    dependencies: frozenset[MonkeyId] = field(default=EMPTY, init=False)
 
     def __call__(self, previous_results: dict[MonkeyId, int]) -> int:
         return self.result
