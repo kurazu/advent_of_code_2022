@@ -5,7 +5,7 @@ import re
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, NewType, Protocol
+from typing import Callable, Iterable, NewType, Protocol
 
 from ..cli_utils import wrap_main
 from ..io_utils import get_stripped_lines
@@ -85,16 +85,20 @@ def parse_monkeys(filename: Path) -> dict[MonkeyId, Monkey]:
     return monkeys
 
 
-@wrap_main
-def main(filename: Path) -> str:
-    monkeys = parse_monkeys(filename)
+def topological_sort(monkeys: dict[MonkeyId, Monkey]) -> Iterable[MonkeyId]:
     graph: dict[MonkeyId, set[MonkeyId]] = defaultdict(set)
     for monkey_id, monkey in monkeys.items():
         for dependency in monkey.dependencies:
             graph[monkey_id].add(dependency)
     sorter = graphlib.TopologicalSorter(graph=graph)
+    return sorter.static_order()
+
+
+@wrap_main
+def main(filename: Path) -> str:
+    monkeys = parse_monkeys(filename)
     results: dict[MonkeyId, int] = {}
-    for monkey_id in sorter.static_order():
+    for monkey_id in topological_sort(monkeys):
         monkey = monkeys[monkey_id]
         results[monkey_id] = monkey(results)
     root_result = results[MonkeyId("root")]
