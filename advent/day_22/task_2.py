@@ -3,6 +3,7 @@ import logging
 from pathlib import Path
 from typing import NamedTuple
 
+import click
 import numpy as np
 from numpy import typing as npt
 
@@ -46,7 +47,7 @@ class Transition(NamedTuple):
     y: Transform
 
 
-TRANSITIONS: dict[Board, dict[Direction, Transition]] = {
+SAMPLE_TRANSITIONS: dict[Board, dict[Direction, Transition]] = {
     Board.A: {
         Direction.UP: Transition(
             Board.E, Direction.DOWN, x=Transform.MIRROR, y=Transform.KEEP
@@ -111,11 +112,35 @@ TRANSITIONS: dict[Board, dict[Direction, Transition]] = {
         ),
     },
 }
-# numoy array for storing a single string character
-SUPER_TILES: list[list[Board | None]] = [
+
+INPUT_TRANSITIONS: dict[Board, dict[Direction, Transition]] = {
+    Board.A: {
+        Direction.UP: Transition(
+            Board.E, Direction.RIGHT, x=Transform.SWAP, y=Transform.SWAP
+        )
+    },
+    Board.B: {},
+    Board.C: {},
+    Board.D: {},
+    Board.E: {
+        Direction.LEFT: Transition(
+            Board.A, Direction.DOWN, x=Transform.SWAP, y=Transform.SWAP
+        )
+    },
+    Board.F: {},
+}
+
+SAMPLE_SUPER_TILES: list[list[Board | None]] = [
     [None, None, Board.A, None],
     [Board.E, Board.F, Board.B, None],
     [None, None, Board.C, Board.D],
+]
+
+INPUT_SUPER_TILES: list[list[Board | None]] = [
+    [None, Board.A, Board.F],
+    [None, Board.B, None],
+    [Board.D, Board.C, None],
+    [Board.E, None, None],
 ]
 
 
@@ -164,6 +189,7 @@ def recover_point(
 
 
 def execute_instructions(
+    transitions: dict[Board, dict[Direction, Transition]],
     superboard: dict[Board, MiniBoard],
     board: Board,
     point: Position,
@@ -195,7 +221,7 @@ def execute_instructions(
                     BoardVisualization(superboard[board].tiles, point, direction),
                 )
                 new_board, new_point, new_direction = get_next_point(
-                    superboard, board, point, direction
+                    transitions, superboard, board, point, direction
                 )
                 new_value = superboard[new_board].tiles[new_point]
                 if new_value == Tile.EMPTY:
@@ -216,8 +242,12 @@ def execute_instructions(
     return board, point, direction
 
 
-def get_transition(board: Board, exit_direction: Direction) -> Transition:
-    board_transitions = TRANSITIONS[board]
+def get_transition(
+    transitions: dict[Board, dict[Direction, Transition]],
+    board: Board,
+    exit_direction: Direction,
+) -> Transition:
+    board_transitions = transitions[board]
     try:
         return board_transitions[exit_direction]
     except KeyError:
@@ -225,6 +255,7 @@ def get_transition(board: Board, exit_direction: Direction) -> Transition:
 
 
 def get_next_point(
+    transitions: dict[Board, dict[Direction, Transition]],
     superboard: dict[Board, MiniBoard],
     board: Board,
     point: Position,
@@ -237,26 +268,26 @@ def get_next_point(
     y, x = point
     if direction == Direction.UP:
         if y == 0:
-            transition = get_transition(board, direction)
+            transition = get_transition(transitions, board, direction)
             return apply_transition(transition, point, size=size)
         else:
             y -= 1
     elif direction == Direction.RIGHT:
         if x == width - 1:
-            transition = get_transition(board, direction)
+            transition = get_transition(transitions, board, direction)
             return apply_transition(transition, point, size=size)
         else:
             x += 1
     elif direction == Direction.DOWN:
         if y == height - 1:
-            transition = get_transition(board, direction)
+            transition = get_transition(transitions, board, direction)
             return apply_transition(transition, point, size=size)
         else:
             y += 1
     else:
         assert direction == Direction.LEFT
         if x == 0:
-            transition = get_transition(board, direction)
+            transition = get_transition(transitions, board, direction)
             return apply_transition(transition, point, size=size)
         else:
             x -= 1
@@ -292,11 +323,25 @@ def apply_transition(
     return new_board, Position(y=y, x=x), new_direction
 
 
-@wrap_main
-def main(filename: Path) -> str:
+@click.command()
+@click.argument(
+    "filename",
+    type=click.Path(
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+        path_type=Path,
+    ),
+    required=True,
+)
+@click.option("--is-input/--is-sample", help="Is input or sample", required=True)
+def main(filename: Path, is_input: bool) -> str:
     logger.debug("Reading data")
     board, instructions = read_data(filename)
-    superboard = get_superboard(board, SUPER_TILES)
+    superboard = get_superboard(
+        board, INPUT_SUPER_TILES if is_input else SAMPLE_SUPER_TILES
+    )
     del board
     logger.debug("Looking for starting point")
     start_board = Board.A
@@ -305,14 +350,19 @@ def main(filename: Path) -> str:
     start_direction = Direction.RIGHT
 
     end_board, end_point, end_direction = execute_instructions(
-        superboard, start_board, start_point, start_direction, instructions
+        INPUT_TRANSITIONS if is_input else SAMPLE_TRANSITIONS,
+        superboard,
+        start_board,
+        start_point,
+        start_direction,
+        instructions,
     )
     logger.debug(
         "End board=%s, point=%r, direction=%s", end_board, end_point, end_direction
     )
     recovered_point = recover_point(superboard, end_board, end_point)
     logger.debug("Recovered point %r", recovered_point)
-    return str(hash_position(recovered_point, end_direction))
+    click.echo(str(hash_position(recovered_point, end_direction)))
 
 
 if __name__ == "__main__":
