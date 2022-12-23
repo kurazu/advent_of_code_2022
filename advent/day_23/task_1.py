@@ -120,14 +120,18 @@ def visualize(elves: set[Point]) -> str:
     return buf.getvalue()
 
 
-@wrap_main
-def main(filename: Path) -> str:
-    elves = set(read_board(filename))
+def get_checks() -> Iterable[list[Check]]:
     check_orders: list[Check] = [top_check, bottom_check, left_check, right_check] * 2
     all_checks: list[list[Check]] = [
         check_orders[offset : offset + 4] for offset in range(4)
     ]
-    checks = it.cycle(all_checks)
+    return it.cycle(all_checks)
+
+
+@wrap_main
+def main(filename: Path) -> str:
+    elves = set(read_board(filename))
+    checks = iter(get_checks())
     logger.debug("Before\n%s", visualize(elves))
     for round in range(10):
         round_checks = next(checks)
