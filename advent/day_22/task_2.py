@@ -8,7 +8,17 @@ from numpy import typing as npt
 
 from ..cli_utils import wrap_main
 from ..logs import setup_logging
-from .task_1 import Direction, Position, find_starting_point, hash_position, read_data
+from .task_1 import (
+    BoardVisualization,
+    Direction,
+    InstructionsType,
+    Position,
+    Rotation,
+    Tile,
+    find_starting_point,
+    hash_position,
+    read_data,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -55,8 +65,8 @@ TRANSITIONS: dict[Board, dict[Direction, Transition]] = {
         Direction.UP: Transition(
             Board.A, Direction.UP, x=Transform.KEEP, y=Transform.MIRROR
         ),
-        Direction.RIGHT: Transition(
-            Board.D, Direction.DOWN, x=Transform.SWAP, y=Transform.SWAP_MIRROR
+        Direction.RIGHT: Transition(  # Verified
+            Board.D, Direction.DOWN, x=Transform.SWAP_MIRROR, y=Transform.SWAP_MIRROR
         ),
         Direction.DOWN: Transition(
             Board.C, Direction.DOWN, x=Transform.KEEP, y=Transform.MIRROR
@@ -77,6 +87,27 @@ TRANSITIONS: dict[Board, dict[Direction, Transition]] = {
         ),
         Direction.LEFT: Transition(
             Board.F, Direction.UP, x=Transform.SWAP_MIRROR, y=Transform.SWAP_MIRROR
+        ),
+    },
+    Board.D: {
+        Direction.LEFT: Transition(
+            Board.C, Direction.LEFT, x=Transform.MIRROR, y=Transform.KEEP
+        ),
+        Direction.DOWN: Transition(
+            Board.E, Direction.RIGHT, x=Transform.SWAP_MIRROR, y=Transform.SWAP_MIRROR
+        ),
+    },
+    Board.E: {
+        Direction.DOWN: Transition(
+            Board.C, Direction.UP, x=Transform.MIRROR, y=Transform.KEEP
+        ),
+        Direction.RIGHT: Transition(
+            Board.F, Direction.RIGHT, x=Transform.MIRROR, y=Transform.KEEP
+        ),
+    },
+    Board.F: {
+        Direction.UP: Transition(
+            Board.A, Direction.RIGHT, x=Transform.SWAP, y=Transform.SWAP
         ),
     },
 }
@@ -132,6 +163,135 @@ def recover_point(
     return Position(y=original_y, x=original_x)
 
 
+def execute_instructions(
+    superboard: dict[Board, MiniBoard],
+    board: Board,
+    point: Position,
+    direction: Direction,
+    instructions: InstructionsType,
+) -> tuple[Board, Position, Direction]:
+    for instruction in instructions:
+        if isinstance(instruction, Rotation):
+            prev_direction = direction
+            if instruction == Rotation.CLOCKWISE:
+                direction = Direction((direction + 1) % 4)
+            else:
+                direction = Direction((direction - 1) % 4)
+            logger.debug(
+                "Rotated %s from %s to %s\n%s",
+                instruction.name,
+                prev_direction.name,
+                direction.name,
+                BoardVisualization(superboard[board].tiles, point, direction),
+            )
+        else:
+            assert isinstance(instruction, int)
+            logger.debug("Moving %d steps in direction %s", instruction, direction.name)
+            for step in range(1, instruction + 1):
+                logger.debug(
+                    "Making step %d from %r\n%s",
+                    step,
+                    point,
+                    BoardVisualization(superboard[board].tiles, point, direction),
+                )
+                new_board, new_point, new_direction = get_next_point(
+                    superboard, board, point, direction
+                )
+                new_value = superboard[new_board].tiles[new_point]
+                if new_value == Tile.EMPTY:
+                    logger.debug("Can move into an empty space")
+                    point = new_point
+                    board = new_board
+                    direction = new_direction
+                else:
+                    assert new_value == Tile.WALL
+                    logger.debug("Hit a wall")
+            logger.debug(
+                "Movement finished at %s %r %s\n%s",
+                board,
+                point,
+                direction,
+                BoardVisualization(superboard[board].tiles, point, direction),
+            )
+    return board, point, direction
+
+
+def get_transition(board: Board, exit_direction: Direction) -> Transition:
+    board_transitions = TRANSITIONS[board]
+    try:
+        return board_transitions[exit_direction]
+    except KeyError:
+        raise KeyError(board, exit_direction)
+
+
+def get_next_point(
+    superboard: dict[Board, MiniBoard],
+    board: Board,
+    point: Position,
+    direction: Direction,
+) -> tuple[Board, Position, Direction]:
+    miniboard = superboard[board]
+    height, width = miniboard.tiles.shape
+    assert height == width
+    size = height
+    y, x = point
+    if direction == Direction.UP:
+        if y == 0:
+            transition = get_transition(board, direction)
+            return apply_transition(transition, point, size=size)
+        else:
+            y -= 1
+    elif direction == Direction.RIGHT:
+        if x == width - 1:
+            transition = get_transition(board, direction)
+            return apply_transition(transition, point, size=size)
+        else:
+            x += 1
+    elif direction == Direction.DOWN:
+        if y == height - 1:
+            transition = get_transition(board, direction)
+            return apply_transition(transition, point, size=size)
+        else:
+            y += 1
+    else:
+        assert direction == Direction.LEFT
+        if x == 0:
+            transition = get_transition(board, direction)
+            return apply_transition(transition, point, size=size)
+        else:
+            x -= 1
+    return board, Position(y=y, x=x), direction
+
+
+def transform(coord: int, transform: Transform, *, other: int, size: int) -> int:
+    if transform == Transform.KEEP:
+        return coord
+    elif transform == Transform.MIRROR:
+        # from 0 to size - 1
+        # from size - 1 to 0
+        return size - coord - 1
+    elif transform == Transform.SWAP:
+        return other
+    else:
+        assert transform == Transform.SWAP_MIRROR
+        return size - other - 1
+
+
+def apply_transition(
+    transition: Transition,
+    point: Position,
+    *,
+    size: int,
+) -> tuple[Board, Position, Direction]:
+    new_board = transition.target
+    new_direction = transition.new_direction
+
+    x = transform(point.x, transition.x, other=point.y, size=size)
+    y = transform(point.y, transition.y, other=point.x, size=size)
+
+    return new_board, Position(y=y, x=x), new_direction
+
+
 @wrap_main
 def main(filename: Path) -> str:
     logger.debug("Reading data")
@@ -144,13 +304,15 @@ def main(filename: Path) -> str:
     logger.debug("Starting point found %r", start_point)
     start_direction = Direction.RIGHT
 
-    end_board, end_point, end_direction = start_board, start_point, start_direction
+    end_board, end_point, end_direction = execute_instructions(
+        superboard, start_board, start_point, start_direction, instructions
+    )
     logger.debug(
         "End board=%s, point=%r, direction=%s", end_board, end_point, end_direction
     )
     recovered_point = recover_point(superboard, end_board, end_point)
     logger.debug("Recovered point %r", recovered_point)
-    return str(hash_position(end_point, end_direction))
+    return str(hash_position(recovered_point, end_direction))
 
 
 if __name__ == "__main__":
