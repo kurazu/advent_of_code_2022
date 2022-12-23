@@ -117,17 +117,87 @@ INPUT_TRANSITIONS: dict[Board, dict[Direction, Transition]] = {
     Board.A: {
         Direction.UP: Transition(
             Board.E, Direction.RIGHT, x=Transform.SWAP, y=Transform.SWAP
-        )
+        ),
+        Direction.LEFT: Transition(
+            Board.D, Direction.RIGHT, x=Transform.KEEP, y=Transform.MIRROR
+        ),
+        Direction.RIGHT: Transition(
+            Board.F, Direction.RIGHT, x=Transform.MIRROR, y=Transform.KEEP
+        ),
+        Direction.DOWN: Transition(
+            Board.B, Direction.DOWN, x=Transform.KEEP, y=Transform.MIRROR
+        ),
     },
-    Board.B: {},
-    Board.C: {},
-    Board.D: {},
+    Board.B: {
+        Direction.RIGHT: Transition(
+            Board.F, Direction.UP, x=Transform.SWAP, y=Transform.SWAP
+        ),
+        Direction.DOWN: Transition(
+            Board.C, Direction.DOWN, x=Transform.KEEP, y=Transform.MIRROR
+        ),
+        Direction.LEFT: Transition(
+            Board.D, Direction.DOWN, x=Transform.SWAP, y=Transform.SWAP
+        ),
+        Direction.UP: Transition(
+            Board.A, Direction.UP, x=Transform.KEEP, y=Transform.MIRROR
+        ),
+    },
+    Board.C: {
+        Direction.UP: Transition(
+            Board.B, Direction.UP, x=Transform.KEEP, y=Transform.MIRROR
+        ),
+        Direction.LEFT: Transition(
+            Board.D, Direction.LEFT, x=Transform.MIRROR, y=Transform.KEEP
+        ),
+        Direction.RIGHT: Transition(
+            Board.F, Direction.LEFT, x=Transform.KEEP, y=Transform.MIRROR
+        ),
+        Direction.DOWN: Transition(
+            Board.E, Direction.LEFT, x=Transform.SWAP, y=Transform.SWAP
+        ),
+    },
+    Board.D: {
+        Direction.LEFT: Transition(
+            Board.A, Direction.RIGHT, x=Transform.KEEP, y=Transform.MIRROR
+        ),
+        Direction.DOWN: Transition(
+            Board.E, Direction.DOWN, x=Transform.KEEP, y=Transform.MIRROR
+        ),
+        Direction.RIGHT: Transition(
+            Board.C, Direction.RIGHT, x=Transform.MIRROR, y=Transform.KEEP
+        ),
+        Direction.UP: Transition(
+            Board.B, Direction.RIGHT, x=Transform.SWAP, y=Transform.SWAP
+        ),
+    },
     Board.E: {
         Direction.LEFT: Transition(
             Board.A, Direction.DOWN, x=Transform.SWAP, y=Transform.SWAP
-        )
+        ),
+        Direction.UP: Transition(
+            Board.D, Direction.UP, x=Transform.KEEP, y=Transform.MIRROR
+        ),
+        Direction.DOWN: Transition(
+            Board.F, Direction.DOWN, x=Transform.KEEP, y=Transform.MIRROR
+        ),
+        Direction.RIGHT: Transition(
+            Board.C, Direction.UP, x=Transform.SWAP, y=Transform.SWAP
+        ),
     },
-    Board.F: {},
+    Board.F: {
+        Direction.UP: Transition(
+            Board.E, Direction.UP, x=Transform.KEEP, y=Transform.MIRROR
+        ),
+        Direction.DOWN: Transition(
+            Board.B, Direction.LEFT, x=Transform.SWAP, y=Transform.SWAP
+        ),
+        Direction.RIGHT: Transition(
+            Board.C, Direction.LEFT, x=Transform.KEEP, y=Transform.MIRROR
+        ),
+        Direction.LEFT: Transition(
+            Board.A, Direction.LEFT, x=Transform.MIRROR, y=Transform.KEEP
+        ),
+    },
 }
 
 SAMPLE_SUPER_TILES: list[list[Board | None]] = [
@@ -232,6 +302,7 @@ def execute_instructions(
                 else:
                     assert new_value == Tile.WALL
                     logger.debug("Hit a wall")
+                    break
             logger.debug(
                 "Movement finished at %s %r %s\n%s",
                 board,
@@ -336,7 +407,7 @@ def apply_transition(
     required=True,
 )
 @click.option("--is-input/--is-sample", help="Is input or sample", required=True)
-def main(filename: Path, is_input: bool) -> str:
+def main(filename: Path, is_input: bool) -> None:
     logger.debug("Reading data")
     board, instructions = read_data(filename)
     superboard = get_superboard(
@@ -366,5 +437,5 @@ def main(filename: Path, is_input: bool) -> str:
 
 
 if __name__ == "__main__":
-    setup_logging()
+    setup_logging(logging.INFO)
     main()
