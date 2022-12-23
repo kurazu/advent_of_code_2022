@@ -75,7 +75,6 @@ def bottom_check(elf: Point, elves: set[Point]) -> Point | None:
 def plan_position(elf: Point, elves: set[Point], checks: list[Check]) -> Point:
     positions = [check(elf, elves) for check in checks]
     if all(positions) or not any(positions):
-        logger.debug("Elf decides to stay put")
         return elf
     else:
         first = mit.first_true(positions)
