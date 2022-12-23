@@ -7,7 +7,6 @@ import click
 import numpy as np
 from numpy import typing as npt
 
-from ..cli_utils import wrap_main
 from ..logs import setup_logging
 from .task_1 import (
     BoardVisualization,
