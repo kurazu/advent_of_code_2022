@@ -1,15 +1,11 @@
-import enum
 import functools
+import io
 import itertools as it
 import logging
 import operator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable, NamedTuple
-
-import numpy as np
-import tqdm
-from numpy import typing as npt
 
 from ..cli_utils import wrap_main
 from ..io_utils import get_stripped_lines
@@ -44,12 +40,9 @@ class Board:
     start_point: Point
     end_point: Point
     blizzards: list[Blizzard]
+    levels_cache: dict[int, set[Point]] = field(default_factory=dict)
 
-    @functools.cached_property
-    def cycle_length(self) -> int:
-        return self.height * self.width
-
-    def get_level(self, t: int) -> set[Point]:
+    def generate_level(self, t: int) -> set[Point]:
         return {
             Point(
                 y=(blizzard.initial_position.y + t * blizzard.velocity.y) % self.height,
@@ -58,9 +51,14 @@ class Board:
             for blizzard in self.blizzards
         }
 
+    def __getitem__(self, t: int) -> set[Point]:
+        if t not in self.levels_cache:
+            self.levels_cache[t] = self.generate_level(t)
+        return self.levels_cache[t]
+
     @functools.cached_property
-    def levels(self) -> list[set[Point]]:
-        return [self.get_level(t) for t in range(1, self.cycle_length + 1)]
+    def almost_end_point(self) -> Point:
+        return Point(y=self.end_point.y - 1, x=self.end_point.x)
 
 
 def read_board(filename: Path) -> Board:
@@ -74,14 +72,14 @@ def read_board(filename: Path) -> Board:
     first_line = next(trimmed_lines)
     assert first_line.startswith(".#")
     width = len(first_line)
-    start_point = Point(y=0, x=0)
+    start_point = Point(y=-1, x=0)
     end_point: Point
     row = 0
     for line in trimmed_lines:
         assert len(line) == width
         if line.startswith("#"):
             assert line.endswith(".")
-            end_point = Point(y=row - 1, x=width - 1)
+            end_point = Point(y=row, x=width - 1)
             break
         for col, char in enumerate(line):
             if char == ".":
@@ -109,32 +107,34 @@ class PositionInTime(NamedTuple):
     position: Point
 
 
-def get_possible_positions(
-    current: Point, *, width: int, height: int
-) -> Iterable[Point]:
+def get_possible_positions(current: Point, board: Board) -> Iterable[Point]:
     yield current  # wait
+
+    if current == board.start_point:
+        yield Point(y=current.y + 1, x=current.x)
+        return
+
     if current.y > 0:
         yield Point(y=current.y - 1, x=current.x)
-    if current.y < height - 1:
+    if current.y < board.height - 1:
         yield Point(y=current.y + 1, x=current.x)
     if current.x > 0:
         yield Point(y=current.y, x=current.x - 1)
-    if current.x < width - 1:
+    if current.x < board.width - 1:
         yield Point(y=current.y, x=current.x + 1)
+
+    if current == board.almost_end_point:
+        yield board.end_point
 
 
 def get_unvisited_neighbours(
     board: Board, visited: set[PositionInTime], current: PositionInTime
 ) -> Iterable[PositionInTime]:
-    next_turn = (current.time + 1) % board.cycle_length
+    next_turn = current.time + 1
     # First figure out which positions are possible (board geometry wise)
-    possible_positions = get_possible_positions(
-        current.position, width=board.width, height=board.height
-    )
+    possible_positions = get_possible_positions(current.position, board)
     # then discard the ones that are occupied by blizzards
-    empty_positions = it.filterfalse(
-        board.levels[next_turn].__contains__, possible_positions
-    )
+    empty_positions = it.filterfalse(board[next_turn].__contains__, possible_positions)
     empty_positions_in_time = map(
         functools.partial(PositionInTime, next_turn), empty_positions
     )
@@ -145,34 +145,81 @@ def get_unvisited_neighbours(
 
 def find_min_distance(board: Board) -> int:
     distances: dict[PositionInTime, int] = {
-        PositionInTime(time=-1, position=board.start_point): 0,
+        PositionInTime(time=0, position=board.start_point): 0,
     }
     visited: set[PositionInTime] = set()
-    with tqdm.tqdm(
-        total=board.height * board.width * board.cycle_length
-    ) as progress_bar:
-        while True:
-            # choose an unvisited position with smallest distance (cost)
-            unvisited = set(distances) - visited
-            current = min(unvisited, key=distances.__getitem__)
-            logger.debug("Visiting %s", current)
-            cost = distances[current]
-            neighbours = get_unvisited_neighbours(board, visited, current)
-            for neighbour in neighbours:
-                distances[neighbour] = cost + 1
-                if neighbour.position == board.end_point:
-                    return distances[neighbour] + 1
-            visited.add(current)
-            progress_bar.update()
+    max_t = -1
+
+    while True:
+        # choose an unvisited position with smallest distance (cost)
+        unvisited = set(distances) - visited
+        current = min(unvisited, key=distances.__getitem__)
+        logger.debug("Visiting %s", current)
+        if current.time > max_t:
+            max_t = current.time
+            logger.info("Considering t=%s", max_t)
+        current_cost = distances[current]
+        neighbours = get_unvisited_neighbours(board, visited, current)
+        cost = current_cost + 1
+        for neighbour in neighbours:
+            logger.debug("  Neighbour %s", neighbour)
+            distances[neighbour] = cost
+            if neighbour.position == board.end_point:
+                logger.debug("    Got just next to the exit")
+                return cost
+                return reconstruct_shortest_path(board, distances, neighbour)
+        visited.add(current)
+
+
+def reconstruct_shortest_path(
+    board: Board, distances: dict[PositionInTime, int], current: PositionInTime
+) -> int:
+    path = [(distances[current], current)]
+    while current.position != board.start_point:
+        prev_turn = current.time - 1
+        neighbors = get_possible_positions(
+            current.position, width=board.width, height=board.height
+        )
+        neighbors_in_time = map(functools.partial(PositionInTime, prev_turn), neighbors)
+        visited_neighbors = filter(distances.__contains__, neighbors_in_time)
+        current = min(visited_neighbors, key=distances.__getitem__)
+        path.append((distances[current], current))
+    for cost, position in reversed(path):
+        logger.debug(
+            "Shortest path entry %d %s:\n%s", cost, position, visualize(board, position)
+        )
+    return len(path)
+
+
+def visualize(board: Board, position: PositionInTime) -> str:
+    level = board[position.time]
+    buf = io.StringIO()
+    for y in range(board.height):
+        for x in range(board.width):
+            point = Point(y=y, x=x)
+            if point == position.position:
+                buf.write("@")
+            elif point in level:
+                buf.write("$")
+            else:
+                buf.write(".")
+        buf.write("\n")
+    return buf.getvalue()
 
 
 @wrap_main
 def main(filename: Path) -> str:
     board = read_board(filename)
+    for t in range(3):
+        logger.debug(
+            "Plain board t=%d\n%s",
+            t,
+            visualize(board, PositionInTime(t, Point(y=-1, x=-1))),
+        )
     min_distance = find_min_distance(board)
     return str(min_distance)
 
 
 if __name__ == "__main__":
-    setup_logging()
+    setup_logging(logging.INFO)
     main()
