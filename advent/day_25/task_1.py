@@ -38,7 +38,7 @@ def int_to_snafu(number: int) -> SNAFU:
     snafu_digits: list[str] = []
     carry = 0
     while number != 0:
-        remainder = (number + carry) % 5
+        remainder = number % 5
         if remainder in {0, 1, 2}:
             snafu_digits.append(str(remainder))
             carry = 0
@@ -49,9 +49,11 @@ def int_to_snafu(number: int) -> SNAFU:
             assert remainder == 4
             snafu_digits.append("-")
             carry = 1
-        number //= 5
+        number = number // 5 + carry
     if carry != 0:
         snafu_digits.append(str(carry))
+    if not snafu_digits:
+        snafu_digits.append("0")
     return SNAFU("".join(reversed(snafu_digits)))
 
 
