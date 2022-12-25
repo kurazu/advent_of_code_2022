@@ -186,8 +186,6 @@ def find_min_distance(
             item=start_point,
         )
     )
-    visited: set[PositionInTime] = set()
-    max_t = start_point.time
 
     while not to_visit.empty():
         current_node = to_visit.get()
