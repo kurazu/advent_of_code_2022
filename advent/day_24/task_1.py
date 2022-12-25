@@ -5,7 +5,8 @@ import logging
 import operator
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable, NamedTuple
+from queue import PriorityQueue
+from typing import Generic, Iterable, NamedTuple, TypeVar
 
 from ..cli_utils import wrap_main
 from ..io_utils import get_stripped_lines
@@ -63,6 +64,10 @@ class Board:
     @functools.cached_property
     def almost_north_exit(self) -> Point:
         return Point(y=self.north_exit.y + 1, x=self.north_exit.x)
+
+
+def manhattan_distance(a: Point, b: Point) -> int:
+    return abs(a.y - b.y) + abs(a.x - b.x)
 
 
 def read_board(filename: Path) -> Board:
@@ -138,8 +143,8 @@ def get_possible_positions(current: Point, board: Board) -> Iterable[Point]:
         yield board.south_exit
 
 
-def get_unvisited_neighbours(
-    board: Board, visited: set[PositionInTime], current: PositionInTime
+def get_valid_neighbours(
+    board: Board, current: PositionInTime
 ) -> Iterable[PositionInTime]:
     next_turn = current.time + 1
     # First figure out which positions are possible (board geometry wise)
@@ -149,36 +154,62 @@ def get_unvisited_neighbours(
     empty_positions_in_time = map(
         functools.partial(PositionInTime, next_turn), empty_positions
     )
+    return empty_positions_in_time
+
+
+def get_unvisited_neighbours(
+    board: Board, visited: set[PositionInTime], current: PositionInTime
+) -> Iterable[PositionInTime]:
+    empty_positions_in_time = get_valid_neighbours(board, current)
     # then discard the ones that we have already visited
     unvisited_positions = it.filterfalse(visited.__contains__, empty_positions_in_time)
     return unvisited_positions
+
+
+T = TypeVar("T")
+
+
+@dataclass(order=True)
+class PriorityNode(Generic[T]):
+    priority: int
+    item: T = field(compare=False)
 
 
 def find_min_distance(
     board: Board, *, start_point: PositionInTime, end_position: Point
 ) -> PositionInTime:
     distances: dict[PositionInTime, int] = {start_point: 0}
+    to_visit: PriorityQueue[PriorityNode[PositionInTime]] = PriorityQueue()
+    to_visit.put(
+        PriorityNode(
+            priority=0 + manhattan_distance(start_point.position, end_position),
+            item=start_point,
+        )
+    )
     visited: set[PositionInTime] = set()
     max_t = start_point.time
 
-    while True:
-        # choose an unvisited position with smallest distance (cost)
-        unvisited = set(distances) - visited
-        current = min(unvisited, key=distances.__getitem__)
+    while not to_visit.empty():
+        current_node = to_visit.get()
+        current = current_node.item
         logger.debug("Visiting %s", current)
-        if current.time > max_t:
-            max_t = current.time
-            logger.info("Considering t=%s", max_t)
+        # choose an unvisited position with smallest distance (cost)
+        if current.position == end_position:
+            logger.debug("Got to the exit")
+            return current
+
         current_cost = distances[current]
-        neighbours = get_unvisited_neighbours(board, visited, current)
-        cost = current_cost + 1
+        new_cost = current_cost + 1
+        neighbours = get_valid_neighbours(board, current)
         for neighbour in neighbours:
-            logger.debug("  Neighbour %s", neighbour)
-            distances[neighbour] = cost
-            if neighbour.position == end_position:
-                logger.debug("    Got just next to the exit")
-                return neighbour
-        visited.add(current)
+            if neighbour not in distances or new_cost < distances[neighbour]:
+                distances[neighbour] = new_cost
+                priority = new_cost + manhattan_distance(
+                    neighbour.position, end_position
+                )
+                to_visit.put(PriorityNode(priority, neighbour))
+
+    raise AssertionError("No path found")
 
 
 def visualize(board: Board, position: PositionInTime) -> str:

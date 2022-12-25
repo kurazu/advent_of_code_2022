@@ -29,5 +29,5 @@ def main(filename: Path) -> str:
 
 
 if __name__ == "__main__":
-    setup_logging()
+    setup_logging(logging.INFO)
     main()
