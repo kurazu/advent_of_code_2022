@@ -37,8 +37,8 @@ class Blizzard:
 class Board:
     height: int
     width: int
-    start_point: Point
-    end_point: Point
+    north_exit: Point
+    south_exit: Point
     blizzards: list[Blizzard]
     levels_cache: dict[int, set[Point]] = field(default_factory=dict)
 
@@ -57,8 +57,12 @@ class Board:
         return self.levels_cache[t]
 
     @functools.cached_property
-    def almost_end_point(self) -> Point:
-        return Point(y=self.end_point.y - 1, x=self.end_point.x)
+    def almost_south_exit(self) -> Point:
+        return Point(y=self.south_exit.y - 1, x=self.south_exit.x)
+
+    @functools.cached_property
+    def almost_north_exit(self) -> Point:
+        return Point(y=self.north_exit.y + 1, x=self.north_exit.x)
 
 
 def read_board(filename: Path) -> Board:
@@ -72,14 +76,14 @@ def read_board(filename: Path) -> Board:
     first_line = next(trimmed_lines)
     assert first_line.startswith(".#")
     width = len(first_line)
-    start_point = Point(y=-1, x=0)
-    end_point: Point
+    north_exit = Point(y=-1, x=0)
+    south_exit: Point
     row = 0
     for line in trimmed_lines:
         assert len(line) == width
         if line.startswith("#"):
             assert line.endswith(".")
-            end_point = Point(y=row, x=width - 1)
+            south_exit = Point(y=row, x=width - 1)
             break
         for col, char in enumerate(line):
             if char == ".":
@@ -96,8 +100,8 @@ def read_board(filename: Path) -> Board:
     return Board(
         height=row,
         width=width,
-        start_point=start_point,
-        end_point=end_point,
+        north_exit=north_exit,
+        south_exit=south_exit,
         blizzards=blizzards,
     )
 
@@ -110,8 +114,12 @@ class PositionInTime(NamedTuple):
 def get_possible_positions(current: Point, board: Board) -> Iterable[Point]:
     yield current  # wait
 
-    if current == board.start_point:
-        yield Point(y=current.y + 1, x=current.x)
+    if current == board.north_exit:
+        yield board.almost_north_exit
+        return
+
+    if current == board.south_exit:
+        yield board.almost_south_exit
         return
 
     if current.y > 0:
@@ -123,8 +131,11 @@ def get_possible_positions(current: Point, board: Board) -> Iterable[Point]:
     if current.x < board.width - 1:
         yield Point(y=current.y, x=current.x + 1)
 
-    if current == board.almost_end_point:
-        yield board.end_point
+    if current == board.almost_north_exit:
+        yield board.north_exit
+
+    if current == board.almost_south_exit:
+        yield board.south_exit
 
 
 def get_unvisited_neighbours(
@@ -143,12 +154,12 @@ def get_unvisited_neighbours(
     return unvisited_positions
 
 
-def find_min_distance(board: Board) -> int:
-    distances: dict[PositionInTime, int] = {
-        PositionInTime(time=0, position=board.start_point): 0,
-    }
+def find_min_distance(
+    board: Board, *, start_point: PositionInTime, end_position: Point
+) -> PositionInTime:
+    distances: dict[PositionInTime, int] = {start_point: 0}
     visited: set[PositionInTime] = set()
-    max_t = -1
+    max_t = start_point.time
 
     while True:
         # choose an unvisited position with smallest distance (cost)
@@ -164,31 +175,10 @@ def find_min_distance(board: Board) -> int:
         for neighbour in neighbours:
             logger.debug("  Neighbour %s", neighbour)
             distances[neighbour] = cost
-            if neighbour.position == board.end_point:
+            if neighbour.position == end_position:
                 logger.debug("    Got just next to the exit")
-                return cost
-                return reconstruct_shortest_path(board, distances, neighbour)
+                return neighbour
         visited.add(current)
-
-
-def reconstruct_shortest_path(
-    board: Board, distances: dict[PositionInTime, int], current: PositionInTime
-) -> int:
-    path = [(distances[current], current)]
-    while current.position != board.start_point:
-        prev_turn = current.time - 1
-        neighbors = get_possible_positions(
-            current.position, width=board.width, height=board.height
-        )
-        neighbors_in_time = map(functools.partial(PositionInTime, prev_turn), neighbors)
-        visited_neighbors = filter(distances.__contains__, neighbors_in_time)
-        current = min(visited_neighbors, key=distances.__getitem__)
-        path.append((distances[current], current))
-    for cost, position in reversed(path):
-        logger.debug(
-            "Shortest path entry %d %s:\n%s", cost, position, visualize(board, position)
-        )
-    return len(path)
 
 
 def visualize(board: Board, position: PositionInTime) -> str:
@@ -210,14 +200,19 @@ def visualize(board: Board, position: PositionInTime) -> str:
 @wrap_main
 def main(filename: Path) -> str:
     board = read_board(filename)
-    for t in range(3):
-        logger.debug(
-            "Plain board t=%d\n%s",
-            t,
-            visualize(board, PositionInTime(t, Point(y=-1, x=-1))),
-        )
-    min_distance = find_min_distance(board)
-    return str(min_distance)
+    # for t in range(3):
+    #     logger.debug(
+    #         "Plain board t=%d\n%s",
+    #         t,
+    #         visualize(board, PositionInTime(t, Point(y=-1, x=-1))),
+    #     )
+    end_point = find_min_distance(
+        board,
+        start_point=PositionInTime(0, board.north_exit),
+        end_position=board.south_exit,
+    )
+    logger.info("Crosses the exit at %s", end_point)
+    return str(end_point.time)
 
 
 if __name__ == "__main__":
